@@ -1,0 +1,1449 @@
+#include <stdio.h>
+#include <stdlib.h>
+struct pos_node
+{
+    int pos;
+    struct pos_node *next;
+};
+
+struct log_node
+{
+    int from;
+    int from_coin;
+    int to;
+    int to_coin;
+    struct log_node *next;
+};
+
+struct log_node *move_log;
+struct pos_node *black_positions[6],*white_positions[6];
+int size=6;
+int board[8][8];
+int pawn_shape[7][7];
+int rook_shape[7][7];
+int bishop_shape[7][7];
+int knight_shape[7][7];
+int queen_shape[7][7];
+int king_shape[7][7];
+int black_captured[16],white_captured[16],check_path[8],cpt=-1,wct=-1,bct=-1;
+int black_king_pos=04,white_king_pos=74,autosave,file_id=0,white_move=1;
+int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
+
+void rook();
+void queen();
+void bishop();
+void print_empty_row();
+void display_name_board();
+void display_captured();
+void pawn();
+void print_white_space();
+void knight();
+void king();
+void print_line();
+void display_row();
+void coin_shape();
+void display_board();
+void num_to_char();
+void chess_board();
+void display_hash_table();
+
+
+int row(int pos)
+{
+    return pos/10;
+}
+
+int column(int pos)
+{
+    return pos%10;
+}
+
+int Coin(int pos)
+{
+    return board[pos/10][pos%10];
+}
+
+int color(int coin)
+{
+    return coin/10;
+}
+
+int coin_type(int coin)
+{
+    return coin%10;
+}
+
+// pos_hash table
+int pos_hash(int coin)
+{
+    return coin%size;
+}
+
+void add_pos(int coin,int cur_pos,int prev_pos)
+{
+    int hsh=pos_hash(coin);
+    struct pos_node *new,*temp;
+    if(coin/10==BLACK)
+    {
+        if(black_positions[hsh]==NULL)
+        {
+            new=(struct pos_node*)malloc(sizeof(struct pos_node));
+            new->pos=cur_pos;
+            new->next=NULL;
+            black_positions[hsh]=new;
+        }
+        else
+        {
+            temp=black_positions[hsh];
+            while(temp!=NULL)
+            {
+                if(temp->pos==prev_pos)
+                {
+                    temp->pos=cur_pos; 
+                    break;
+                }
+                if(temp->next==NULL)
+                {
+                    new=(struct pos_node*)malloc(sizeof(struct pos_node));
+                    new->pos=cur_pos;
+                    new->next=NULL;
+                    temp->next=new;
+                    break;
+                }
+                temp=temp->next;
+            }
+        }
+    }
+    else
+    {
+        if(white_positions[hsh]==NULL)
+        {
+            new=(struct pos_node*)malloc(sizeof(struct pos_node));
+            new->pos=cur_pos;
+            new->next=NULL;
+            white_positions[hsh]=new;
+        }
+        else
+        {
+            temp=white_positions[hsh];
+            while(temp!=NULL)
+            {
+                if(temp->pos==prev_pos)
+                {
+                    temp->pos=cur_pos; 
+                    break;
+                }
+                if(temp->next==NULL)
+                {
+                    new=(struct pos_node*)malloc(sizeof(struct pos_node));
+                    new->pos=cur_pos;
+                    new->next=NULL;
+                    temp->next=new;
+                    break;
+                }
+                temp=temp->next;
+            }
+        }
+    }
+}
+
+void delete_pos(int coin,int pos)
+{
+    struct pos_node*temp;
+    int hsh=pos_hash(coin);
+    if(coin/10==BLACK)
+    {
+        temp=black_positions[hsh];
+        if(temp!=NULL && black_positions[hsh]->pos==pos)
+        {
+            black_positions[hsh]=black_positions[hsh]->next;
+            free(temp);
+        }
+        else
+        {
+            struct pos_node *prev;
+            while(temp!=NULL)
+            {
+                if(temp->pos==pos)
+                {
+                   prev->next=temp->next;
+                   free(temp);
+                   break;
+                }
+                prev=temp;
+                temp=temp->next;
+            }
+
+        }
+    }
+    else
+    {
+        temp=white_positions[hsh];
+        if(temp!=NULL && white_positions[hsh]->pos==pos)
+        {
+            white_positions[hsh]=white_positions[hsh]->next;
+            free(temp);
+        }
+        else
+        {
+            struct pos_node*prev;
+            while(temp!=NULL)
+            {
+                if(temp->pos==pos)
+                {
+                   prev->next=temp->next;
+                   free(temp);
+                   break;
+                }
+                prev=temp;
+                temp=temp->next;
+            }
+
+        }
+    }
+}
+
+void init_hash_table()
+{
+    for(int i=0;i<=7;i++)
+    {
+        for(int j=0;j<=7;j++)
+        {
+            if(board[i][j]!=0)
+            {
+                add_pos(board[i][j],i*10+j,-1);
+            }
+        }
+    }
+}
+
+void push_log(int from,int from_coin,int to,int to_coin)
+{
+    struct log_node *new=(struct log_node*)malloc(sizeof(struct log_node));
+    new->from=from;
+    new->to=to;
+    new->from_coin=from_coin;
+    new->to_coin=to_coin;
+    if(move_log==NULL)
+    {
+        move_log=new;
+        move_log->next=NULL;
+    }
+    else
+    {
+        new->next=move_log;
+        move_log=new;
+    }
+}
+
+struct log_node* pop_log()
+{
+    if(move_log==NULL)
+    {
+        return NULL;
+    }
+    else
+    {
+        struct log_node *temp=move_log;
+        move_log=move_log->next;
+        return temp;
+    }
+}
+
+void push_captured(int color,int coin)
+{
+    if(color==WHITE)
+    {
+        wct++;
+        white_captured[wct]=coin;
+    }
+    else
+    {
+        bct++;
+        black_captured[bct]=coin;
+    }
+}
+
+void pop_captured(int color)
+{
+    if(color==WHITE)
+    {
+        wct--;
+    }
+    else if(color==2)
+    {
+        bct--;
+    }
+}
+
+void push_check_path(int pos)
+{
+    check_path[++cpt]=pos;
+}
+
+int can_move_news(int coin)
+{
+    if(coin_type(coin)!=KNIGHT && coin_type(coin)!=BISHOP)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+int pawn_move(int start,int dest)
+{
+    int clr=color(Coin(start)),diff=start/10-dest/10;
+    if(clr==WHITE && column(start)==column(dest) && diff>0)
+    {
+        if(Coin(dest)==0 && row(start)==6  && (diff==2 || diff==1))
+        {
+            return 1;
+        }
+        else if(diff==1 && Coin(dest)==0)
+        {
+            return 1;
+        }
+        return 0;
+    }
+    else if(clr==WHITE && diff==1 && column(start)!=column(dest))
+    {
+        if(color(Coin(dest))==BLACK)
+        {
+            return 1;
+        }
+        return 0;
+    }
+
+    if(clr==BLACK && column(start)==column(dest) && diff<0)
+    {
+        if(Coin(dest)==0 && row(start)==1  && (diff==-2 || diff==-1))
+        {
+            return 1;
+        }
+        else if(diff==-1 && Coin(dest)==0)
+        {
+            return 1;
+        }
+        return 0;
+    }
+    else if(clr==BLACK && diff==-1 && column(start)!=column(dest))
+    {
+        if(color(Coin(dest))==WHITE)
+        {
+            return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+int is_valid_pos(int row,int column)
+{
+    if(row>=0 && row<8 && column<8 && column>=0)
+    {
+        return 1;
+    }
+    return 0;
+}
+
+int steps_limit(int start,int dest)
+{
+    if(coin_type(Coin(start))==KING)
+    {
+        return  (row(start)-row(dest)==1) || (row(start)-row(dest)==-1)||
+        (column(start)-column(dest)==1) || (column(start)-column(dest)==-1);
+    }
+    else if(coin_type(Coin(start))==PAWN)
+    {
+        return pawn_move(start,dest);
+    }
+    else
+    {
+        return 1;
+    }
+}
+
+int news_path(int start,int dest)
+{
+    if(start > dest)
+    {
+        int tmp=start;
+        start=dest;
+        dest=tmp;
+    }
+    if(column(start)==column(dest))
+    {
+        int j=column(start);
+        for(int i=row(start)+1;i<row(dest);i++)
+        {
+            if(board[i][j]!=0)
+            {
+                return 0;
+            }
+        }
+    }
+    else if(row(start)==row(dest))
+    {
+        int j=start/10;
+        for(int i=column(start)+1;i<column(dest);i++)
+        {
+            if(board[j][i]!=0)
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int cross_path(int start,int destination)
+{
+    if(start < destination)
+    {
+        int t=start;
+        start=destination;
+        destination=t;
+    }
+    int diff=row(start)-row(destination);
+    if(column(start) < column(destination))
+    {
+        int pos=start;
+        for(int i=1;i<diff;i++)
+        {
+            pos=(row(pos)-1)*10+(column(pos)+1);
+            if(Coin(pos)!=0)
+            {
+                return 0;
+            }
+        }
+    }
+    else if(column(start) > column(destination))
+    {
+        int pos=start;
+        for(int i=1;i<diff;i++)
+        {
+            pos=(row(pos)-1)*10+(column(pos)-1);
+            if(Coin(pos)!=0)
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int is_cross_move(int start,int dest)
+{
+    if(start < dest)
+    {
+        int t=start;
+        start=dest;
+        dest=t;
+    }
+    int pos=start,diff=row(start)-row(dest);
+    if(column(start) < column(dest))
+    {
+        pos=(row(pos)-diff)*10+(column(pos)+diff);
+        if(pos==dest)
+        {
+            return 1;
+        }
+    }
+    else if(column(start) > column(dest))
+    {
+        pos=(row(pos)-diff)*10+(column(pos)-diff);
+        if(pos==dest)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int can_move_cross(int coin)
+{
+   if(coin_type(coin)!=KNIGHT && coin_type(coin)!=ROOK)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    } 
+}
+
+int is_knight(int coin)
+{
+    if(coin_type(coin)==KNIGHT)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    } 
+}
+
+int is_knight_mv(int x,int y)
+{
+    if( (x/10+2)*10+(x%10+1)==y || (x/10+1)*10+(x%10+2)==y ||
+        (x/10-2)*10+(x%10+1)==y || (x/10-1)*10+(x%10+2)==y ||
+        (x/10-2)*10+(x%10-1)==y || (x/10-1)*10+(x%10-2)==y ||
+        (x/10+2)*10+(x%10-1)==y || (x/10+1)*10+(x%10-2)==y)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+int is_news_move(int start,int dest)
+{
+    return row(start)==row(dest) || column(start)==column(dest);
+}
+
+int validate_move(int start,int dest)
+{
+    if(is_news_move(start,dest))
+    {
+        if(can_move_news(Coin(start)))
+        {
+            if(coin_type(Coin(start))==KING)
+            {
+                return steps_limit(start,dest);
+            }
+            else if(coin_type(Coin(start))==PAWN)
+            {
+                return pawn_move(start,dest);
+            }
+            else
+            {
+                return news_path(start,dest);
+            }
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    else if(is_cross_move(start,dest))
+    {
+        if(can_move_cross(Coin(start)))
+        {
+            if(coin_type(Coin(start))==KING)
+            {
+                return steps_limit(start,dest);
+            }
+            else if(coin_type(Coin(start))==PAWN)
+            {
+                return pawn_move(start,dest);
+            }
+            else
+            {
+                return cross_path(start,dest);
+            }
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    else if(is_knight(Coin(start)))
+    {
+        return is_knight_mv(start,dest);
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+//checks check and track the path from where the check is happening
+int is_check(int king_color,int square)
+{
+    cpt=-1;
+    int x=row(square),y=column(square);
+    for(int i=x-1;i>=0;i--)
+    {
+        push_check_path(i*10+y);
+        if(color(board[i][y])==king_color)
+        {
+           break;
+        }
+        else if(board[i][y]!=0 && can_move_news(board[i][y]) && steps_limit(i*10+y,square))
+        {
+            return i*10+y;
+        }
+        else if(board[i][y]!=0)
+        {
+            break;
+        }
+    }
+    cpt=-1;
+    for(int i=square/10+1;i<=7;i++)
+    {
+        push_check_path(i*10+y);
+        if(color(board[i][y])==king_color)
+        {
+            break;
+        }
+        else if(board[i][y]!=0 && can_move_news(board[i][y]) && steps_limit(i*10+y,square))
+        {
+            return i*10+y;
+        }
+        else if(board[i][y]!=0)
+        {
+            break;
+        }
+    }
+    cpt=-1;
+    for(int i=square%10+1;i<=7;i++)
+    {
+        push_check_path(x*10+i);
+        if(color(board[x][i])==king_color)
+        {
+            break;
+        }
+        else if(board[x][i]!=0 && can_move_news(board[x][i]) && steps_limit(x*10+i,square))
+        {
+            return x*10+i;
+        }
+        else if(board[x][i]!=0)
+        {
+            break;
+        }
+    }
+    cpt=-1;
+    for(int i=square%10-1;i>=0;i--)
+    {
+        push_check_path(x*10+i);
+        if(color(board[x][i])==king_color)
+        {
+            break;
+        }
+        else if(board[x][i]!=0 && can_move_news(board[x][i]) && steps_limit(x*10+i,square))
+        {
+            return x*10+i;
+        }
+        else if(board[x][i]!=0)
+        {
+            break;
+        }
+    }
+    //north west
+    int min,max;
+    if(x<y)
+    {
+        min=x;
+        max=y;
+    }
+    else
+    {
+        min=y;
+        max=x;
+    }
+    int pos=square;
+    cpt=-1;
+    for(int i=0;i<min;i++)
+    {
+        pos=(row(pos)-1)*10+(column(pos)-1);
+        push_check_path(pos);
+        if(color(board[row(pos)][column(pos)])==king_color)
+        {
+            break;
+        }
+        else if(board[row(pos)][column(pos)]!=0 && can_move_cross(board[row(pos)][column(pos)]) && steps_limit(pos,square))
+        {
+            return pos;
+        }
+        else if(board[row(pos)][column(pos)]!=0)
+        {
+            break;
+        }
+    }
+    //south east mv
+    cpt=-1;
+    pos=square;
+    for(int i=0;i<(7-max);i++)
+    {
+        pos=(row(pos)+1)*10+(column(pos)+1);
+        push_check_path(pos);
+        if(color(board[row(pos)][column(pos)])==king_color)
+        {
+            break;
+        }
+        else if(board[row(pos)][column(pos)]!=0 && can_move_cross(board[row(pos)][column(pos)]) && steps_limit(pos,square))
+        {
+            return pos;
+        }
+        else if(board[row(pos)][column(pos)]!=0)
+        {
+            break;
+        }
+        
+    }
+    //north east
+    cpt=-1;
+    int steps;
+    if((x+y)<7)
+    {
+        steps=x;
+    }
+    else
+    {
+        steps=7-y;
+    }
+    pos=square;
+    for(int i=0;i<steps;i++)
+    {
+        pos=(row(pos)-1)*10+(column(pos)+1);
+        push_check_path(pos);
+        if(color(board[row(pos)][column(pos)])==king_color)
+        {       
+            break;
+        }
+        else if(board[row(pos)][column(pos)]!=0  && can_move_cross(board[row(pos)][column(pos)]) && steps_limit(pos,square))
+        {
+            return pos;
+        }
+        else if(board[row(pos)][column(pos)]!=0)
+        {
+            break;
+        }
+    }
+    //south west
+    cpt=-1;
+    if((x+y)<7)
+    {
+        steps=y;
+    }
+    else
+    {
+        steps=7-x;
+    }
+    pos=square;
+    for(int i=0;i<steps;i++)
+    {
+        pos=(row(pos)+1)*10+(column(pos)-1);
+        push_check_path(pos);
+        if(color(board[row(pos)][column(pos)])==king_color)
+        {
+            break;
+        }
+        else if(board[row(pos)][column(pos)]!=0 && can_move_cross(board[row(pos)][column(pos)]) && steps_limit(pos,square))
+        {
+            return pos;
+        }
+        else if(board[row(pos)][column(pos)]!=0)
+        {
+            break;
+        }
+    }
+    //knight_shape check
+    cpt=-1;
+    int opcolor;
+    if(king_color==1)
+    {
+        opcolor=2;
+    }
+    else
+    {
+        opcolor=1;
+    }
+    if(is_valid_pos(square/10+2,square%10+1) && board[square/10+2][square%10+1]==opcolor*10+5)
+    {
+        push_check_path((square/10+2)*10+(square%10+1));
+        return check_path[cpt];
+    }
+    if(is_valid_pos(square/10+1,square%10+2) && board[square/10+1][square%10+2]==opcolor*10+5)
+    {
+        push_check_path((square/10+1)*10+(square%10+2));
+        return check_path[cpt];
+    }
+    if(is_valid_pos(square/10-2,square%10+1) && board[square/10-2][square%10+1]==opcolor*10+5)
+    {
+        push_check_path((square/10-2)*10+(square%10+1));
+        return check_path[cpt];
+    }
+    if(is_valid_pos(square/10-1,square%10+2) && board[square/10-1][square%10+2]==opcolor*10+5)
+    {
+        push_check_path((square/10-1)*10+(square%10+2));
+        return check_path[cpt];
+    }
+    if(is_valid_pos(square/10-2,square%10-1) && board[square/10-2][square%10-1]==opcolor*10+5)
+    {
+        push_check_path((square/10-2)*10+(square%10-1));
+        return check_path[cpt];
+    }
+    if(is_valid_pos(square/10-1,square%10-2) && board[square/10-1][square%10-2]==opcolor*10+5)
+    {
+        push_check_path((square/10-1)*10+(square%10-2));
+        return check_path[cpt];
+    }
+    if(is_valid_pos(square/10+2,square%10-1) && board[square/10+2][square%10-1]==opcolor*10+5)
+    {
+        push_check_path((square/10+2)*10+(square%10-1));
+        return check_path[cpt];
+    }
+    if(is_valid_pos(square/10+1,square%10-2) && board[square/10+1][square%10-2]==opcolor*10+5)
+    {
+        push_check_path((square/10+1)*10+(square%10-2));
+        return check_path[cpt];
+    }
+    return -1;
+}
+
+int one_king_move(int pos)
+{
+    int coin=Coin(pos),row=pos/10,column=pos%10,f=0;
+    int king_color=color(coin);
+    board[row][column]=0;
+    if(is_valid_pos(row+1,column+1) && color(board[row+1][column+1])!=king_color &&
+     is_check(coin/10,(row+1)*10+(column+1))==-1)
+    {
+        f=1;
+    }
+    else if(is_valid_pos(row+1,column-1) && color(board[row+1][column-1])!=king_color &&
+    is_check(coin/10,(row+1)*10+(column-1))==-1)
+    {
+        f=1;
+    }
+    else if(is_valid_pos(row-1,column+1) && color(board[row-1][column+1])!=king_color &&
+    is_check(coin/10,(row-1)*10+(column+1))==-1)
+    {
+        f=1;
+    }
+    else if(is_valid_pos(row-1,column-1) && color(board[row-1][column-1])!=king_color &&
+    is_check(coin/10,(row-1)*10+(column-1))==-1)
+    {
+        f=1;
+    }
+    else if(is_valid_pos(row+1,column) && color(board[row+1][column])!=king_color &&
+    is_check(coin/10,(row+1)*10+(column))==-1)
+    {
+        f=1;
+    } 
+    else if(is_valid_pos(row-1,column) && color(board[row-1][column])!=king_color &&
+    is_check(coin/10,(row-1)*10+(column))==-1)
+    {
+        f=1;
+    } 
+    else if(is_valid_pos(row,column+1) && color(board[row][column+1])!=king_color &&
+    is_check(coin/10,(row)*10+(column+1))==-1)
+    {
+        f=1;
+    } 
+    else if(is_valid_pos(row,column-1) && color(board[row][column-1])!=king_color &&
+    is_check(coin/10,(row+1)*10+(column))==-1)
+    {
+        f=1;
+    }
+    board[pos/10][pos%10]=coin;
+    return f;
+}
+
+int move(int start,int dest)
+{
+    if(start==dest || color(Coin(start))==color(Coin(dest)))
+    {
+        return 0;
+    }
+    else if(validate_move(start,dest))
+    {
+        push_log(start,Coin(start),dest,Coin(dest));
+        add_pos(Coin(start),dest,start);
+        if(Coin(dest)!=0)
+        {
+            push_captured(color(Coin(dest)),Coin(dest));
+            delete_pos(Coin(dest),dest);
+        }
+        board[row(dest)][column(dest)]=board[row(start)][column(start)];
+        board[row(start)][column(start)]=0;
+        return 1;
+    }
+    return 0;
+}
+
+int undo()
+{
+    if(move_log!=NULL)
+    {
+        struct log_node*temp=pop_log();
+        if(temp->to_coin!=0)
+        {
+            pop_captured(color(temp->to_coin));
+            add_pos(temp->to_coin,temp->to,-1);
+        }
+        board[row(temp->from)][column(temp->from)]=temp->from_coin;
+        board[row(temp->to)][column(temp->to)]=temp->to_coin;
+        add_pos(temp->from_coin,temp->from,temp->to);
+        if(temp->from_coin==WHITE*10+KING)
+        {
+            white_king_pos=temp->from;
+        }  
+        else if(temp->from_coin==BLACK*10+KING)
+        {
+            black_king_pos=temp->from;
+        }   
+        free(temp);
+        display_name_board();
+        //display_board();
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+void promote_pawn(int pos)
+{
+    int rep;
+    while(1)
+    {
+        printf("4.queen,5,knight_shape,7.rook,8.bishop ");
+        scanf("%d",&rep);
+        if(rep==4 || rep==5 || rep==7 || rep==8)
+        {
+            board[pos/10][pos%10]=(board[pos/10][pos%10]/10)*10+rep;
+            break;
+        }
+    }
+}
+
+int cover_check(int pos,int color)
+{
+    struct pos_node **hashtable,*temp;
+    if(color == BLACK)
+    {
+        hashtable=black_positions;
+    }
+    else
+    {
+        hashtable=white_positions;
+    }
+    for(int i=0;i<6;i++)
+    {
+        temp=hashtable[i];
+        while(temp!=NULL)
+        {
+            if(coin_type(Coin(temp->pos))!=KING && validate_move(temp->pos,pos))
+            {
+                return Coin(temp->pos);
+            }
+            temp=temp->next;
+        }
+    }
+    return 0;
+}
+
+int is_check_covered(int color)
+{
+    int covercoin;
+    for(int i=cpt;i>=0;i--)
+    {
+        covercoin=cover_check(check_path[i],color);
+        if(covercoin)
+        {
+            return covercoin;
+        }
+    }
+    return 0;
+}
+
+int is_game_over(int color,int kingpos)
+{
+    if(is_check(color,kingpos)!=-1)
+    {
+        return !is_check_covered(color) && !one_king_move(kingpos);
+    }
+    return 0;
+}
+
+void free_positions(struct pos_node **positions)
+{
+    struct pos_node *prev,*temp;
+    for(int i=0;i<=7;i++)
+    {
+        temp=positions[i];
+        while(temp!=NULL)
+        {
+            prev=temp;
+            temp=temp->next;
+            free(prev);
+        }
+    }
+}
+
+void destruct()
+{
+    struct log_node *prev,*temp=move_log;
+    while(temp!=NULL)
+    {
+        prev=temp;
+        temp=temp->next;
+        free(prev);
+    }
+    free_positions(white_positions);
+    free_positions(black_positions);
+}
+
+void construct()
+{
+    chess_board();
+    init_hash_table();
+    queen();
+    king();
+    knight();
+    pawn();
+    rook();
+    bishop();
+}
+
+int main()
+{
+    //construct();
+    chess_board();
+    init_hash_table();
+    display_name_board();
+    //display_board();
+    int choice=1,check;
+    int from,to;
+    while(choice)
+    {
+        if(white_move==1)
+        {
+            if(is_game_over(WHITE,white_king_pos))
+            {
+                printf("Black won");
+                break;
+            }
+            printf("whites move ");
+            scanf("%d %d",&from,&to);
+            if(from==3 && to==3)
+            {
+                if(undo())
+                {
+                    white_move=0;
+                }
+                continue;
+            }
+            if((!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to))) || color(Coin(from))!=WHITE)
+            {
+                continue;
+            }
+            if(!move(from,to))
+            {
+                printf("wrong move\n");
+                continue;
+            }
+            else
+            {
+                if(Coin(to)==WHITE*10+KING)
+                {
+                    white_king_pos=to;
+                }
+                check=is_check(1,white_king_pos);
+                if(check!=-1)
+                {
+                    undo();
+                    continue;
+                }
+                else if(Coin(to)==WHITE*10+PAWN && row(to)==0)
+                {
+                    promote_pawn(to);
+                }
+            }
+            white_move=0;
+        }
+        else
+        {
+            if(is_game_over(2,black_king_pos))
+            {
+                printf("White won");
+                break;
+            }
+            printf("black move ");
+            scanf("%d %d",&from,&to);
+            if(from==3 && to==3)
+            {
+                if(undo())
+                {
+                    white_move=1;
+                }
+                continue;
+            }
+
+            if((!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to))) || color(Coin(from))!=BLACK)
+            {
+                continue;
+            }
+            else if(!move(from,to))
+            {
+                printf("wrong move\n");
+                continue;
+            }
+            else
+            {
+                if(Coin(to)==BLACK*10+KING)
+                {
+                    black_king_pos=to;
+                }
+                check=is_check(BLACK,black_king_pos);
+                if(check!=-1)
+                {
+                    undo();
+                    continue;
+                }
+                else if(Coin(to)==BLACK*10+PAWN && row(to)==7)
+                {
+                    promote_pawn(to);
+                }
+            }
+            white_move=1;
+        }
+        display_name_board();
+        //display_board();
+    }
+    destruct();
+    return 0;
+}
+
+void display_hash_table()
+{
+    struct pos_node*temp;
+    for(int i=0;i<6;i++)
+    {
+        temp=black_positions[i];
+        printf("%d=row",i);
+        while(temp!=NULL)
+        {
+            printf("%d ",temp->pos);
+            temp=temp->next;
+        }
+        printf("\n");
+    }
+    for(int i=0;i<6;i++)
+    {
+        temp=white_positions[i];
+        printf("%d=row",i);
+        while(temp!=NULL)
+        {
+            printf("%d ",temp->pos);
+            temp=temp->next;
+        }
+        printf("\n");
+    }
+}
+
+void print_empty_row()
+{
+    for(int i=0;i<=12;i++)
+    {
+        printf(" ");
+    }
+}
+
+void print_white_space()
+{
+    for(int i=0;i<=12;i++)
+    {
+        printf(":");
+    }
+}
+
+void print_line()
+{
+    for(int i=0;i<=7;i++)
+    {
+        printf("______________");
+    }
+    printf("\n");
+}
+
+void display_row(int board[][7],int row,int color)
+{
+
+    for(int j=0;j<7;j++)
+    {
+        if(color==WHITE)
+        {
+            if(board[row][j]==0)
+            {
+                printf(" ");
+            }
+            else
+            {
+                printf("0");
+            }  
+        }
+        else
+        {
+            if(board[row][j]==0)
+            {
+                printf(" ");
+            }
+            else
+            {
+                printf("*");
+            }  
+        }
+    }
+}
+
+void coin_shape(int coin,int row,int color)
+{
+    if(coin_type(coin)==PAWN)
+    {
+       display_row(pawn_shape,row,color);
+    }
+    else if(coin_type(coin)==ROOK)
+    {
+        display_row(rook_shape,row,color);  
+    }
+    else if(coin_type(coin)==BISHOP)
+    {
+        display_row(bishop_shape,row,color);  
+    }
+    else if(coin_type(coin)==KNIGHT)
+    {
+        display_row(knight_shape,row,color);  
+    }
+    else if(coin_type(coin)==KING)
+    {
+        display_row(king_shape,row,color);  
+    }
+    else if(coin_type(coin)==QUEEN)
+    {
+        display_row(queen_shape,row,color);  
+    }
+}
+
+void display_board()
+{
+    display_captured(black_captured,bct);
+    printf("\t  ");
+    for(int i=0;i<8;i++)
+    {
+        printf("     %d        ",i);
+    }
+    printf("\n");
+    for(int i=0;i<=7;i++)
+    {
+        printf("\t");
+        print_line();
+        for(int k=0;k<=6;k++)
+        {
+            if(k==3)
+            {
+                printf("%d ",i);
+            }
+
+            printf("\t|");        
+            for(int j=0;j<=7;j++)
+            {
+                if(board[i][j]!=0)
+                {
+                    printf("   ");
+                    coin_shape(board[i][j],k,board[i][j]/10);
+                    printf("   |");
+                }
+                else if((j%2==0 && i%2==0) ||( 
+                j%2!=0 && i%2!=0))
+                {
+                    print_white_space();
+                    printf("|");
+
+                }
+                else
+                {
+                    print_empty_row();
+                    printf("|");
+                }
+            }
+            printf("\n");
+        }
+    }
+    printf("\t");
+    print_line();
+    printf("\n");
+    display_captured(white_captured,wct);
+}
+
+void num_to_char(int num)
+{
+    if(num==WHITE)
+    {
+        printf("w");
+    }
+    if(num==BLACK)
+    {
+        printf("b");
+    }
+    if(num==KING)
+    {
+        printf("king");
+    }
+    if(num==QUEEN)
+    {
+        printf("queen");
+    }
+    if(num==KNIGHT)
+    {
+        printf("knight");
+    }
+    if(num==PAWN)
+    {
+        printf("pawn");
+    }
+    if(num==ROOK)
+    {
+        printf("rook");
+    }
+    if(num==BISHOP)
+    {
+        printf("bishop");
+    }
+}
+
+void display_captured(int *board,int top)
+{
+    printf("\t");
+    for(int i=0;i<=top;i++)
+    {
+        num_to_char(color(board[i]));
+        num_to_char(coin_type(board[i]));
+        printf(" ");
+    }
+    printf("\n");
+}
+
+void chess_board()
+{
+    board[0][0]=27,board[0][7]=27,board[0][1]=25,board[0][6]=25,board[0][2]=28,board[0][5]=28,board[0][3]=24,board[0][4]=23;
+    board[7][0]=17,board[7][7]=17,board[7][1]=15,board[7][6]=15,board[7][2]=18,board[7][5]=18,board[7][3]=14,board[7][4]=13;
+    for(int i=0;i<=7;i++)
+    {
+        for(int j=0;j<=7;j++)
+        {
+            if(i==1)
+            {
+                board[i][j]=26;
+            }
+            else if(i==6)
+            {
+                board[i][j]=16;
+            }
+        }
+    }
+
+}
+
+void pawn()
+{
+pawn_shape[0][0]=pawn_shape[0][1]=pawn_shape[0][2]=pawn_shape[0][3]=pawn_shape[0][4]=pawn_shape[0][5]=pawn_shape[0][6]=0;
+pawn_shape[1][0]=pawn_shape[1][1]=0,pawn_shape[1][2]=1,pawn_shape[1][3]=0,pawn_shape[1][4]=1,pawn_shape[1][5]=pawn_shape[1][6]=0;
+pawn_shape[2][0]=0,pawn_shape[2][1]=1,pawn_shape[2][2]=0,pawn_shape[2][3]=1,pawn_shape[2][4]=0,pawn_shape[2][5]=1,pawn_shape[2][6]=0;
+pawn_shape[3][0]=0,pawn_shape[3][1]=0,pawn_shape[3][2]=1,pawn_shape[3][3]=0,pawn_shape[3][4]=1,pawn_shape[3][5]=0,pawn_shape[3][6]=0;
+pawn_shape[4][0]=0,pawn_shape[4][1]=0,pawn_shape[4][2]=1,pawn_shape[4][3]=1,pawn_shape[4][4]=1,pawn_shape[4][5]=0,pawn_shape[4][6]=0;
+pawn_shape[5][0]=0,pawn_shape[5][1]=1,pawn_shape[5][2]=1,pawn_shape[5][3]=1,pawn_shape[5][4]=1,pawn_shape[5][5]=1,pawn_shape[5][6]=0;
+pawn_shape[6][0]=1,pawn_shape[6][1]=1,pawn_shape[6][2]=1,pawn_shape[6][3]=1,pawn_shape[6][4]=1,pawn_shape[6][5]=1,pawn_shape[6][6]=1;
+}
+
+void bishop()
+{
+bishop_shape[0][0]=0,bishop_shape[0][1]=0,bishop_shape[0][2]=0,bishop_shape[0][3]=1,bishop_shape[0][4]=bishop_shape[0][5]=bishop_shape[0][6]=0;
+bishop_shape[1][0]=0,bishop_shape[1][1]=1,bishop_shape[1][2]=1,bishop_shape[1][3]=0,bishop_shape[1][4]=1,bishop_shape[1][5]=1,bishop_shape[1][6]=0;
+bishop_shape[2][0]=0,bishop_shape[2][1]=0,bishop_shape[2][2]=1,bishop_shape[2][3]=1,bishop_shape[2][4]=1,bishop_shape[2][5]=0,bishop_shape[2][6]=0;
+bishop_shape[3][0]=0,bishop_shape[3][1]=0,bishop_shape[3][2]=1,bishop_shape[3][3]=1,bishop_shape[3][4]=1,bishop_shape[3][5]=0,bishop_shape[3][6]=0;
+bishop_shape[4][0]=0,bishop_shape[4][1]=0,bishop_shape[4][2]=1,bishop_shape[4][3]=1,bishop_shape[4][4]=1,bishop_shape[4][5]=0,bishop_shape[4][6]=0;
+bishop_shape[5][0]=0,bishop_shape[5][1]=1,bishop_shape[5][2]=1,bishop_shape[5][3]=1,bishop_shape[5][4]=1,bishop_shape[5][5]=1,bishop_shape[5][6]=0;
+bishop_shape[6][0]=1,bishop_shape[6][1]=1,bishop_shape[6][2]=1,bishop_shape[6][3]=1,bishop_shape[6][4]=1,bishop_shape[6][5]=1,bishop_shape[6][6]=1;
+}
+
+void knight()
+{
+knight_shape[0][0]=0,knight_shape[0][1]=0,knight_shape[0][2]=1,knight_shape[0][3]=1,knight_shape[0][4]=knight_shape[0][5]=1,knight_shape[0][6]=0;
+knight_shape[1][0]=1,knight_shape[1][1]=1,knight_shape[1][2]=1,knight_shape[1][3]=1,knight_shape[1][4]=0,knight_shape[1][5]=1,knight_shape[1][6]=1;
+knight_shape[2][0]=1,knight_shape[2][1]=1,knight_shape[2][2]=1,knight_shape[2][3]=1,knight_shape[2][4]=1,knight_shape[2][5]=1,knight_shape[2][6]=1;
+knight_shape[3][0]=0,knight_shape[3][1]=0,knight_shape[3][2]=0,knight_shape[3][3]=0,knight_shape[3][4]=1,knight_shape[3][5]=1,knight_shape[3][6]=1;
+knight_shape[4][0]=0,knight_shape[4][1]=0,knight_shape[4][2]=0,knight_shape[4][3]=1,knight_shape[4][4]=1,knight_shape[4][5]=1,knight_shape[4][6]=0;
+knight_shape[5][0]=0,knight_shape[5][1]=0,knight_shape[5][2]=1,knight_shape[5][3]=1,knight_shape[5][4]=1,knight_shape[5][5]=1,knight_shape[5][6]=0;
+knight_shape[6][0]=1,knight_shape[6][1]=1,knight_shape[6][2]=1,knight_shape[6][3]=1,knight_shape[6][4]=1,knight_shape[6][5]=1,knight_shape[6][6]=1; 
+}
+
+void queen()
+{
+queen_shape[0][0]=1,queen_shape[0][1]=0,queen_shape[0][2]=0,queen_shape[0][3]=1,queen_shape[0][4]=queen_shape[0][5]=0,queen_shape[0][6]=1;
+queen_shape[1][0]=0,queen_shape[1][1]=1,queen_shape[1][2]=0,queen_shape[1][3]=1,queen_shape[1][4]=0,queen_shape[1][5]=1,queen_shape[1][6]=0;
+queen_shape[2][0]=1,queen_shape[2][1]=1,queen_shape[2][2]=1,queen_shape[2][3]=1,queen_shape[2][4]=1,queen_shape[2][5]=1,queen_shape[2][6]=1;
+queen_shape[3][0]=0,queen_shape[3][1]=0,queen_shape[3][2]=1,queen_shape[3][3]=1,queen_shape[3][4]=1,queen_shape[3][5]=0,queen_shape[3][6]=0;
+queen_shape[4][0]=0,queen_shape[4][1]=0,queen_shape[4][2]=1,queen_shape[4][3]=1,queen_shape[4][4]=1,queen_shape[4][5]=0,queen_shape[4][6]=0;
+queen_shape[5][0]=0,queen_shape[5][1]=1,queen_shape[5][2]=1,queen_shape[5][3]=1,queen_shape[5][4]=1,queen_shape[5][5]=1,queen_shape[5][6]=0;
+queen_shape[6][0]=1,queen_shape[6][1]=1,queen_shape[6][2]=1,queen_shape[6][3]=1,queen_shape[6][4]=1,queen_shape[6][5]=1,queen_shape[6][6]=1;
+}
+
+void king()
+{
+king_shape[0][0]=king_shape[0][1]=0,king_shape[0][2]=0,king_shape[0][3]=1,king_shape[0][4]=king_shape[0][5]=king_shape[0][6]=0;
+king_shape[1][0]=0,king_shape[1][1]=1,king_shape[1][2]=1,king_shape[1][3]=1,king_shape[1][4]=1,king_shape[1][5]=1,king_shape[1][6]=0;
+king_shape[2][0]=0,king_shape[2][1]=0,king_shape[2][2]=0,king_shape[2][3]=1,king_shape[2][4]=0,king_shape[2][5]=0,king_shape[2][6]=0;
+king_shape[3][0]=1,king_shape[3][1]=1,king_shape[3][2]=1,king_shape[3][3]=1,king_shape[3][4]=1,king_shape[3][5]=1,king_shape[3][6]=1;
+king_shape[4][0]=0,king_shape[4][1]=0,king_shape[4][2]=1,king_shape[4][3]=1,king_shape[4][4]=1,king_shape[4][5]=0,king_shape[4][6]=0;
+king_shape[5][0]=0,king_shape[5][1]=1,king_shape[5][2]=1,king_shape[5][3]=1,king_shape[5][4]=1,king_shape[5][5]=1,king_shape[5][6]=0;
+king_shape[6][0]=1,king_shape[6][1]=1,king_shape[6][2]=1,king_shape[6][3]=1,king_shape[6][4]=1,king_shape[6][5]=1,king_shape[6][6]=1;
+}
+
+void rook()
+{
+    for(int i=0;i<7;i++)
+    {
+        for(int j=0;j<7;j++)
+        {
+            if(i==0 || i==6)
+            {
+                rook_shape[i][j]=1;
+            }
+            else
+            {
+                if(j==0 || j==6)
+                {
+                    rook_shape[i][j]=0;
+                }
+                else
+                {
+                    rook_shape[i][j]=1;
+                }
+            }
+        }
+        printf("\n");
+    }
+}
+
+void display_name_board()
+{
+    display_captured(black_captured,bct);
+    printf("\t");
+    for(int i=0;i<8;i++)
+    {
+        printf("%d\t",i);
+    }
+    printf("\n\n");
+    for(int i=0;i<8;i++)
+    {
+        printf("%d\t",i);
+        for(int j=0;j<8;j++)
+        {
+            num_to_char(color(board[i][j]));
+            num_to_char(coin_type(board[i][j]));
+            printf("\t");
+        }
+        printf("\n\n");
+    }
+    display_captured(white_captured,wct);
+}
