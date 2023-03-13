@@ -45,7 +45,7 @@ void coin_shape();
 void display_board();
 void num_to_char();
 void chess_board();
-void display_hash_table();
+void display_positions();
 
 
 int row(int pos)
@@ -60,7 +60,7 @@ int column(int pos)
 
 int Coin(int pos)
 {
-    return board[pos/10][pos%10];
+    return board[row(pos)][column(pos)];
 }
 
 int color(int coin)
@@ -73,132 +73,84 @@ int coin_type(int coin)
     return coin%10;
 }
 
-// pos_hash table
 int pos_hash(int coin)
 {
     return coin%size;
 }
 
-void add_pos(int coin,int cur_pos,int prev_pos)
+void add_position(int coin,int cur_pos,int prev_pos)
 {
-    int hsh=pos_hash(coin);
-    struct pos_node *new,*temp;
-    if(coin/10==BLACK)
+    int hash=pos_hash(coin);
+    struct pos_node *new,*temp,**positions;
+    if(color(coin)==BLACK)
     {
-        if(black_positions[hsh]==NULL)
-        {
-            new=(struct pos_node*)malloc(sizeof(struct pos_node));
-            new->pos=cur_pos;
-            new->next=NULL;
-            black_positions[hsh]=new;
-        }
-        else
-        {
-            temp=black_positions[hsh];
-            while(temp!=NULL)
-            {
-                if(temp->pos==prev_pos)
-                {
-                    temp->pos=cur_pos; 
-                    break;
-                }
-                if(temp->next==NULL)
-                {
-                    new=(struct pos_node*)malloc(sizeof(struct pos_node));
-                    new->pos=cur_pos;
-                    new->next=NULL;
-                    temp->next=new;
-                    break;
-                }
-                temp=temp->next;
-            }
-        }
+        positions=black_positions;
     }
     else
     {
-        if(white_positions[hsh]==NULL)
+        positions=white_positions;
+    }
+    if(positions[hash]==NULL)
+    {
+        new=(struct pos_node*)malloc(sizeof(struct pos_node));
+        new->pos=cur_pos;
+        new->next=NULL;
+        positions[hash]=new;
+    }
+    else
+    {
+        temp=positions[hash];
+        while(temp!=NULL)
         {
-            new=(struct pos_node*)malloc(sizeof(struct pos_node));
-            new->pos=cur_pos;
-            new->next=NULL;
-            white_positions[hsh]=new;
-        }
-        else
-        {
-            temp=white_positions[hsh];
-            while(temp!=NULL)
+            if(temp->pos==prev_pos)
             {
-                if(temp->pos==prev_pos)
-                {
-                    temp->pos=cur_pos; 
-                    break;
-                }
-                if(temp->next==NULL)
-                {
-                    new=(struct pos_node*)malloc(sizeof(struct pos_node));
-                    new->pos=cur_pos;
-                    new->next=NULL;
-                    temp->next=new;
-                    break;
-                }
-                temp=temp->next;
+                temp->pos=cur_pos; 
+                break;
             }
+            if(temp->next==NULL)
+            {
+                new=(struct pos_node*)malloc(sizeof(struct pos_node));
+                new->pos=cur_pos;
+                new->next=NULL;
+                temp->next=new;
+                break;
+            }
+            temp=temp->next;
         }
     }
 }
 
 void delete_pos(int coin,int pos)
 {
-    struct pos_node*temp;
-    int hsh=pos_hash(coin);
-    if(coin/10==BLACK)
+    struct pos_node *temp,**positions;
+    int hash=pos_hash(coin);
+    if(color(coin)==BLACK)
     {
-        temp=black_positions[hsh];
-        if(temp!=NULL && black_positions[hsh]->pos==pos)
-        {
-            black_positions[hsh]=black_positions[hsh]->next;
-            free(temp);
-        }
-        else
-        {
-            struct pos_node *prev;
-            while(temp!=NULL)
-            {
-                if(temp->pos==pos)
-                {
-                   prev->next=temp->next;
-                   free(temp);
-                   break;
-                }
-                prev=temp;
-                temp=temp->next;
-            }
-
-        }
+        positions=black_positions;
     }
     else
     {
-        temp=white_positions[hsh];
-        if(temp!=NULL && white_positions[hsh]->pos==pos)
+        positions=white_positions;
+    }   
+    temp=positions[hash];
+    if(temp!=NULL && positions[hash]->pos==pos)
+    {
+        positions[hash]=positions[hash]->next;
+        free(temp);
+    }
+    else
+    {
+        struct pos_node *prev;
+        while(temp!=NULL)
         {
-            white_positions[hsh]=white_positions[hsh]->next;
-            free(temp);
-        }
-        else
-        {
-            struct pos_node*prev;
-            while(temp!=NULL)
+            if(temp->pos==pos)
             {
-                if(temp->pos==pos)
-                {
-                   prev->next=temp->next;
-                   free(temp);
-                   break;
-                }
-                prev=temp;
-                temp=temp->next;
+                prev->next=temp->next;
+                free(temp);
+                break;
             }
-
+            prev=temp;
+            temp=temp->next;
         }
     }
 }
@@ -211,7 +163,7 @@ void init_hash_table()
         {
             if(board[i][j]!=0)
             {
-                add_pos(board[i][j],i*10+j,-1);
+                add_position(board[i][j],i*10+j,-1);
             }
         }
     }
@@ -856,7 +808,7 @@ int move(int start,int dest)
     else if(validate_move(start,dest))
     {
         push_log(start,Coin(start),dest,Coin(dest));
-        add_pos(Coin(start),dest,start);
+        add_position(Coin(start),dest,start);
         if(Coin(dest)!=0)
         {
             push_captured(color(Coin(dest)),Coin(dest));
@@ -873,15 +825,15 @@ int undo()
 {
     if(move_log!=NULL)
     {
-        struct log_node*temp=pop_log();
+        struct log_node *temp=pop_log();
+        board[row(temp->from)][column(temp->from)]=temp->from_coin;
+        board[row(temp->to)][column(temp->to)]=temp->to_coin;
+        add_position(temp->from_coin,temp->from,temp->to);
         if(temp->to_coin!=0)
         {
             pop_captured(color(temp->to_coin));
-            add_pos(temp->to_coin,temp->to,-1);
+            add_position(temp->to_coin,temp->to,-1);
         }
-        board[row(temp->from)][column(temp->from)]=temp->from_coin;
-        board[row(temp->to)][column(temp->to)]=temp->to_coin;
-        add_pos(temp->from_coin,temp->from,temp->to);
         if(temp->from_coin==WHITE*10+KING)
         {
             white_king_pos=temp->from;
@@ -892,6 +844,7 @@ int undo()
         }   
         free(temp);
         display_name_board();
+        //display_positions();
         //display_board();
         return 1;
     }
@@ -1010,6 +963,7 @@ int main()
     //construct();
     chess_board();
     init_hash_table();
+    //display_positions();
     display_name_board();
     //display_board();
     int choice=1,check;
@@ -1108,37 +1062,35 @@ int main()
             white_move=1;
         }
         display_name_board();
+        //display_positions();
         //display_board();
     }
     destruct();
     return 0;
 }
 
-void display_hash_table()
+void display_position(struct pos_node **positions)
 {
     struct pos_node*temp;
     for(int i=0;i<6;i++)
     {
-        temp=black_positions[i];
-        printf("%d=row",i);
+        temp=positions[i];
+        printf("%d --",i);
         while(temp!=NULL)
         {
-            printf("%d ",temp->pos);
+            printf("<%d,%d> ",temp->pos,Coin(temp->pos));
             temp=temp->next;
         }
         printf("\n");
     }
-    for(int i=0;i<6;i++)
-    {
-        temp=white_positions[i];
-        printf("%d=row",i);
-        while(temp!=NULL)
-        {
-            printf("%d ",temp->pos);
-            temp=temp->next;
-        }
-        printf("\n");
-    }
+}
+
+void display_positions()
+{
+    printf("black positions\n");
+    display_position(black_positions);
+    printf("white positions\n");
+    display_position(white_positions);
 }
 
 void print_empty_row()
