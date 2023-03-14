@@ -948,6 +948,11 @@ void read_or_write_board(char mode)
     if(mode=='w')
     {
         file = fopen(file_name,"w");
+        if(file==NULL)
+        {
+            printf("error opening the file\n");
+            return;
+        }
         for(int i=0;i<8;i++)
         {
             for(int j=0;j<8;j++)
@@ -971,13 +976,21 @@ void read_or_write_board(char mode)
 
         write_move_log(file,move_log);
         fprintf(file,"%d %d %d %d\n",-1,-1,-1,-1);
-        fclose(file);
+        if(fclose(file)!=0)
+        {
+            printf("error closing the file\n");
+        }
     }
     else if(mode == 'r')
     {
         int pos,coin;
         //file =fopen("chesslog.txt","r");
         file =fopen(file_name,"r");
+        if(file==NULL)
+        {
+            printf("error opening the file\n");
+            return;
+        }
         while(fscanf(file,"%d %d",&pos,&coin)!=EOF)
         {
             if(pos==-1)
@@ -1005,7 +1018,10 @@ void read_or_write_board(char mode)
             }
             push_log(from,from_coin,to,to_coin);
         }
-        fclose(file);
+        if(fclose(file)!=0)
+        {
+            printf("error closing the file\n");
+        }
     }
 }
 
