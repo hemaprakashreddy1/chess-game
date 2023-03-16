@@ -836,9 +836,15 @@ int undo()
     if(move_log!=NULL)
     {
         struct log_node *temp=pop_log();
-        board[row(temp->from)][column(temp->from)]=temp->from_coin;
-        board[row(temp->to)][column(temp->to)]=temp->to_coin;
-        add_position(temp->from_coin,temp->from,temp->to);
+        if(coin_type(temp->from_coin)==PAWN && (row(temp->to)==0 || row(temp->to)==7))
+        {
+            add_position(temp->from_coin,temp->from,-1);
+            delete_position(Coin(temp->to),temp->to);
+        }
+        else
+        {
+            add_position(temp->from_coin,temp->from,temp->to);
+        }
         if(temp->to_coin!=0)
         {
             pop_captured(color(temp->to_coin));
@@ -851,10 +857,12 @@ int undo()
         else if(temp->from_coin==BLACK*10+KING)
         {
             black_king_pos=temp->from;
-        }   
+        }
+        board[row(temp->from)][column(temp->from)]=temp->from_coin;
+        board[row(temp->to)][column(temp->to)]=temp->to_coin;   
         free(temp);
         display_name_board();
-        //display_positions();
+        display_positions();
         //display_board();
         return 1;
     }
@@ -975,7 +983,7 @@ int main()
     //construct();
     chess_board();
     init_hash_table();
-    //display_positions();
+    display_positions();
     display_name_board();
     //display_board();
     int choice=1,check;
@@ -1074,7 +1082,7 @@ int main()
             white_move=1;
         }
         display_name_board();
-        //display_positions();
+        display_positions();
         //display_board();
     }
     destruct();
