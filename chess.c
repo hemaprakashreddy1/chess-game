@@ -1034,16 +1034,13 @@ void start_game()
             printf("enter id of previous game");
             scanf("%d",&file_id);
             read_or_write_board('r');
-            if(move_log!=NULL)
+            if(move_log!=NULL && color(move_log->from_coin)==WHITE)
             {
-                if(color(move_log->from_coin)==WHITE)
-                {
-                    white_move=0;
-                }
-                else
-                {
-                    white_move=1;
-                }
+                white_move=0;
+            }
+            else
+            {
+                white_move==1;
             }
             break;
         }
