@@ -739,6 +739,29 @@ int is_check(int king_color,int square)
     return -1;
 }
 
+int is_check_after_move(int start,int dest)
+{
+    int start_coin=Coin(start),dest_coin=Coin(dest),check,king_pos;
+    if(coin_type(start_coin)==KING)
+    {
+        king_pos=dest;
+    }
+    else if(color(start_coin)==WHITE)
+    {
+        king_pos=white_king_pos;
+    }
+    else
+    {
+        king_pos=black_king_pos;
+    }
+    board[row(dest)][column(dest)]=board[row(start)][column(start)];
+    board[row(start)][column(start)]=0;
+    check=is_check(color(start_coin),king_pos);
+    board[row(start)][column(start)]=start_coin;
+    board[row(dest)][column(dest)]=dest_coin;
+    return check!=-1;
+}
+
 int one_king_move_conditions(int row,int column,int king_color)
 {
     if(is_valid_pos(row,column) && color(board[row][column])!=king_color)
@@ -795,7 +818,7 @@ int move(int start,int dest)
     {
         return 0;
     }
-    else if(validate_move(start,dest))
+    else if(validate_move(start,dest) && !is_check_after_move(start,dest))
     {
         push_log(start,Coin(start),dest,Coin(dest));
         add_position(Coin(start),dest,start);
@@ -885,7 +908,7 @@ int cover_check(int pos,int color)
         temp=hashtable[i];
         while(temp!=NULL)
         {
-            if(coin_type(Coin(temp->pos))!=KING && validate_move(temp->pos,pos))
+            if(coin_type(Coin(temp->pos))!=KING && validate_move(temp->pos,pos) && !is_check_after_move(temp->pos,pos))
             {
                 return Coin(temp->pos);
             }
@@ -1006,11 +1029,6 @@ int main()
                 {
                     white_king_pos=to;
                 }
-                if(is_check(BLACK,black_king_pos)!=-1)
-                {
-                    undo();
-                    continue;
-                }
                 else if(Coin(to)==WHITE*10+PAWN && row(to)==0)
                 {
                     promote_pawn(to);
@@ -1053,11 +1071,6 @@ int main()
                 if(Coin(to)==BLACK*10+KING)
                 {
                     black_king_pos=to;
-                }
-                if(is_check(BLACK,black_king_pos)!=-1)
-                {
-                    undo();
-                    continue;
                 }
                 else if(Coin(to)==BLACK*10+PAWN && row(to)==7)
                 {
