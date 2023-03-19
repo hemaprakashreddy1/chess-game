@@ -989,6 +989,7 @@ void read_or_write_board(char mode)
 
         write_move_log(file,move_log);
         fprintf(file,"%d %d %d %d\n",-1,-1,-1,-1);
+        fprintf(file,"%d %d %d\n",white_king_pos,black_king_pos,-1);
         if(fclose(file)!=0)
         {
             printf("error closing the file\n");
@@ -1031,6 +1032,7 @@ void read_or_write_board(char mode)
             }
             push_log(from,from_coin,to,to_coin);
         }
+        fscanf(file,"%d %d",&white_king_pos,&black_king_pos);
         if(fclose(file)!=0)
         {
             printf("error closing the file\n");
@@ -1164,6 +1166,7 @@ int main()
             {
                 read_or_write_board('w');
                 printf("saved\n");
+                continue;
             }
            else if(!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to)))
             {
@@ -1212,6 +1215,7 @@ int main()
             {
                 read_or_write_board('w');
                 printf("saved\n");
+                continue;
             }
             else if(!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to)))
             {
