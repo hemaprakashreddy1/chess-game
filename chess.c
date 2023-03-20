@@ -47,7 +47,7 @@ void chess_board();
 void display_positions();
 int news_path();
 int is_check_after_move();
-
+void read_or_write_board(char mode);
 
 int row(int pos)
 {
@@ -771,56 +771,6 @@ int is_check_after_move(int start,int dest)
     return check!=-1;
 }
 
-int one_king_move_conditions(int row,int column,int king_color)
-{
-    if(is_valid_pos(row,column) && color(board[row][column])!=king_color)
-    {
-        return is_check(king_color,position(row,column))==-1;
-    }
-    return 0;  
-}
-
-int one_king_move(int pos)
-{
-    int coin=Coin(pos),row=pos/10,column=pos%10,f=0;
-    int king_color=color(coin);
-    board[row][column]=0;
-    if(one_king_move_conditions(row+1,column+1,king_color))
-    {
-        f=1;
-    }
-    else if(one_king_move_conditions(row+1,column-1,king_color))
-    {
-        f=1;
-    }
-    else if(one_king_move_conditions(row-1,column+1,king_color))
-    {
-        f=1;
-    }
-    else if(one_king_move_conditions(row-1,column-1,king_color))
-    {
-        f=1;
-    }
-    else if(one_king_move_conditions(row+1,column,king_color))
-    {
-        f=1;
-    } 
-    else if(one_king_move_conditions(row-1,column,king_color))
-    {
-        f=1;
-    } 
-    else if(one_king_move_conditions(row,column+1,king_color))
-    {
-        f=1;
-    } 
-    else if(one_king_move_conditions(row,column-1,king_color))
-    {
-        f=1;
-    }
-    board[pos/10][pos%10]=coin;
-    return f;
-}
-
 int move(int start,int dest)
 {
     if(validate_move(start,dest))
@@ -1040,6 +990,11 @@ int one_knight_move(int coin,int pos)
     return 0;
 }
 
+int one_king_move(int pos)
+{
+    return one_news_move(pos) || one_cross_move(pos);
+}
+
 int one_move(int type,int pos)
 {
     if(type==PAWN)
@@ -1093,18 +1048,31 @@ int have_one_move(int color)
 
 int is_game_over(int color,int king_position)
 {
-    if(is_check(color,king_position)!=-1)
+    int king_can_move=one_king_move(king_position);
+    if(!king_can_move && is_check(color,king_position)!=-1 && !is_check_covered(color))
     {
-        if(!is_check_covered(color) && !one_king_move(king_position))
+        if(color==BLACK)
         {
-            printf("check mate\n");
-            return 1;
+            printf("White won through checkmate\n");
         }
+        else
+        {
+            printf("Black won through checkmate\n");
+        }
+        if(autosave==1)
+        {
+            read_or_write_board('w');
+        }
+        exit(0);
     }
-    else if(!one_king_move(king_position) && !have_one_move(color))
+    else if(!king_can_move && !have_one_move(color))
     {
-        printf("Stale mate\n");
-        return 1;
+        printf("Drawn through Stale mate\n");
+        if(autosave==1)
+        {
+            read_or_write_board('w');
+        }
+        exit(0);
     }
     return 0;
 }
@@ -1230,10 +1198,12 @@ void start_game()
             if(move_log!=NULL && color(move_log->from_coin)==WHITE)
             {
                 white_move=0;
+                is_game_over(BLACK,black_king_pos);
             }
             else
             {
                 white_move==1;
+                is_game_over(WHITE,white_king_pos);
             }
             break;
         }
@@ -1305,7 +1275,7 @@ int main()
     construct();
     display_name_board();
     //display_board();
-    int choice=1,check;
+    int choice=1;
     int from,to;
     while(choice)
     {
@@ -1313,13 +1283,8 @@ int main()
         {
             read_or_write_board('w');
         }
-        if(white_move==1)
+        if(white_move)
         {
-            if(is_game_over(WHITE,white_king_pos))
-            {
-                printf("Black won");
-                break;
-            }
             printf("whites move ");
             scanf("%d %d",&from,&to);
             if(from==3 && to==3)
@@ -1336,7 +1301,7 @@ int main()
                 printf("saved\n");
                 continue;
             }
-           else if(!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to)))
+            else if(!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to)))
             {
                 continue;
             }
@@ -1359,16 +1324,12 @@ int main()
                 {
                     promote_pawn(to);
                 }
+                is_game_over(BLACK,black_king_pos);
             }
             white_move=0;
         }
         else
         {
-            if(is_game_over(BLACK,black_king_pos))
-            {
-                printf("White won");
-                break;
-            }
             printf("black move ");
             scanf("%d %d",&from,&to);
             if(from==3 && to==3)
@@ -1408,6 +1369,7 @@ int main()
                 {
                     promote_pawn(to);
                 }
+                is_game_over(WHITE,white_king_pos);
             }
             white_move=1;
         }
