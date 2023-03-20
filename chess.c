@@ -25,7 +25,7 @@ int knight_shape[7][7];
 int queen_shape[7][7];
 int king_shape[7][7];
 int black_captured[16],white_captured[16],check_path[8],cpt=-1,wct=-1,bct=-1;
-int black_king_pos=04,white_king_pos=74,white_move=1;
+int black_king_pos=04,white_king_pos=74,autosave=0,file_id=0,white_move=1;
 int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
 
 void rook();
@@ -1109,6 +1109,157 @@ int is_game_over(int color,int king_position)
     return 0;
 }
 
+//storing in a file
+void write_move_log(FILE *file,struct log_node*temp)
+{
+    if(temp!=NULL)
+    {
+        write_move_log(file,temp->next);
+    }
+    if(temp!=NULL)
+    {
+        fprintf(file,"%d %d %d %d ",temp->from,temp->from_coin,temp->to,temp->to_coin);
+    }
+}
+void read_or_write_board(char mode)
+{
+    FILE *file;
+    char file_name[100];
+    sprintf(file_name,"%d.txt",file_id);
+    if(mode=='w')
+    {
+        file = fopen(file_name,"w");
+        if(file==NULL)
+        {
+            printf("error opening the file\n");
+            return;
+        }
+        for(int i=0;i<8;i++)
+        {
+            for(int j=0;j<8;j++)
+            {
+                fprintf(file,"%d %d ",i*10+j,board[i][j]);
+            }
+        }
+        fprintf(file,"%d %d\n",-1,-1);
+        //storing captured coins
+        //white_positions
+        for(int i=0;i<=wct;i++)
+        {
+            fprintf(file,"%d ",white_captured[i]);
+        }
+        //black_positions
+        for(int i=0;i<=bct;i++)
+        {
+            fprintf(file,"%d ",black_captured[i]);
+        }
+        fprintf(file,"%d\n",-1);
+
+        write_move_log(file,move_log);
+        fprintf(file,"%d %d %d %d\n",-1,-1,-1,-1);
+        fprintf(file,"%d %d %d\n",white_king_pos,black_king_pos,-1);
+        if(fclose(file)!=0)
+        {
+            printf("error closing the file\n");
+        }
+    }
+    else if(mode == 'r')
+    {
+        int pos,coin;
+        //file =fopen("chesslog.txt","r");
+        file =fopen(file_name,"r");
+        if(file==NULL)
+        {
+            printf("error opening the file\n");
+            return;
+        }
+        while(fscanf(file,"%d %d",&pos,&coin)!=EOF)
+        {
+            if(pos==-1)
+            {
+                break;
+            }
+            board[row(pos)][column(pos)]=coin;
+        }
+        //reading captured coins
+        while(fscanf(file,"%d ",&coin)!=EOF)
+        {
+            if(coin==-1)
+            {
+                break;
+            }
+            push_captured(color(coin),coin);
+        }
+        //reading_move_log
+        int from,from_coin,to,to_coin;
+        while(fscanf(file,"%d %d %d %d",&from,&from_coin,&to,&to_coin)!=EOF)
+        {
+            if(from == -1)
+            {
+                break;
+            }
+            push_log(from,from_coin,to,to_coin);
+        }
+        fscanf(file,"%d %d",&white_king_pos,&black_king_pos);
+        if(fclose(file)!=0)
+        {
+            printf("error closing the file\n");
+        }
+    }
+}
+
+void start_game()
+{
+    int choice;
+    while(1)
+    {
+        printf("\n1.New game 2.continue 3.settings ");
+        scanf("%d",&choice);
+        if(choice==1)
+        {
+            printf("enter any id(number) for this game ");
+            scanf("%d",&file_id);
+            chess_board();
+            break;
+        }
+        else if(choice==2)
+        {
+            printf("enter id of previous game");
+            scanf("%d",&file_id);
+            read_or_write_board('r');
+            if(move_log!=NULL && color(move_log->from_coin)==WHITE)
+            {
+                white_move=0;
+            }
+            else
+            {
+                white_move==1;
+            }
+            break;
+        }
+        else if(choice==3)
+        {
+            char as;
+            printf("do you want to enable autosave? y/n");
+            scanf(" %c",&as);
+            if(as=='y' || as=='Y')
+            {
+                autosave=1;
+            }
+            else if(as=='n' || as=='N')
+            {
+                printf("-2,-2 to save file\n");
+                autosave=0;
+            }
+            continue;
+        }
+        else
+        {
+            printf("invalid choice\n");
+        }
+    }
+}
+
 void free_positions(struct pos_node **positions)
 {
     struct pos_node *prev,*temp;
@@ -1139,7 +1290,6 @@ void destruct()
 
 void construct()
 {
-    chess_board();
     init_hash_table();
     queen();
     king();
@@ -1151,16 +1301,18 @@ void construct()
 
 int main()
 {
-    //construct();
-    chess_board();
-    init_hash_table();
-    //display_positions();
+    start_game();
+    construct();
     display_name_board();
     //display_board();
     int choice=1,check;
     int from,to;
     while(choice)
     {
+        if(autosave==1)
+        {
+            read_or_write_board('w');
+        }
         if(white_move==1)
         {
             if(is_game_over(WHITE,white_king_pos))
@@ -1178,7 +1330,13 @@ int main()
                 }
                 continue;
             }
-            else if((!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to))))
+            if(from==-2 && to ==-2)
+            {
+                read_or_write_board('w');
+                printf("saved\n");
+                continue;
+            }
+           else if(!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to)))
             {
                 continue;
             }
@@ -1219,6 +1377,12 @@ int main()
                 {
                     white_move=1;
                 }
+                continue;
+            }
+            else if(from==-2 && to ==-2)
+            {
+                read_or_write_board('w');
+                printf("saved\n");
                 continue;
             }
             else if(!is_valid_pos(row(from),column(from)) || !is_valid_pos(row(to),column(to)))
