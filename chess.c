@@ -761,9 +761,9 @@ void promote_pawn(int pos)
     int coin;
     while(1)
     {
-        printf("4.queen,5,knight,7.rook,8.bishop ");
+        printf("4.queen,5.knight,7.rook,8.bishop ");
         scanf("%d",&coin);
-        if(coin==4 || coin==5 || coin==7 || coin==8)
+        if(coin==QUEEN || coin==KNIGHT || coin==ROOK || coin==BISHOP)
         {
             delete_position(Coin(pos),pos);
             board[row(pos)][column(pos)]=color(Coin(pos))*10+coin;
