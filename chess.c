@@ -49,6 +49,8 @@ void display_positions();
 int news_path();
 int is_check_after_move();
 void read_or_write_board(char mode);
+int can_promote_pawn();
+void promote_pawn();
 
 int row(int pos)
 {
@@ -710,6 +712,10 @@ int move(int start,int dest)
         }
         board[row(dest)][column(dest)]=Coin(start);
         board[row(start)][column(start)]=0;
+        if(coin_type(Coin(dest))==PAWN && can_promote_pawn(color(Coin(dest)),dest))
+        {
+            promote_pawn(dest);
+        }
         return 1;
     }
     return 0;
@@ -754,6 +760,11 @@ int undo()
     {
         return 0;
     }
+}
+
+int can_promote_pawn(int color,int pos)
+{
+    return (row(pos)==0 && color==WHITE) || (row(pos)==7 && color==BLACK);
 }
 
 void promote_pawn(int pos)
@@ -1217,10 +1228,6 @@ int main()
                 {
                     white_king_pos=to;
                 }
-                else if(Coin(to)==WHITE*10+PAWN && row(to)==0)
-                {
-                    promote_pawn(to);
-                }
                 is_game_over(BLACK,black_king_pos);
             }
             white_move=0;
@@ -1261,10 +1268,6 @@ int main()
                 if(Coin(to)==BLACK*10+KING)
                 {
                     black_king_pos=to;
-                }
-                else if(Coin(to)==BLACK*10+PAWN && row(to)==7)
-                {
-                    promote_pawn(to);
                 }
                 is_game_over(WHITE,white_king_pos);
             }
