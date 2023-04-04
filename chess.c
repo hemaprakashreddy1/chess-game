@@ -87,6 +87,13 @@ int pos_hash(int coin)
     return coin%6;
 }
 
+void swap(int *x,int *y)
+{
+    int t=*x;
+    *x=*y;
+    *y=t;
+}
+
 void add_position(int coin,int cur_pos,int prev_pos)
 {
     int hash=pos_hash(coin);
@@ -247,37 +254,37 @@ int can_move_news(int coin)
 
 int pawn_move(int start,int dest)
 {
-    int clr=color(Coin(start)),diff=row(start)-row(dest);
-    if(clr==WHITE && Coin(dest)==0 && column(start)==column(dest) && diff>0)
+    int clr=color(Coin(start)),steps=row(start)-row(dest);
+    if(clr==WHITE && Coin(dest)==0 && column(start)==column(dest) && steps>0)
     {
-        if(diff==1)
+        if(steps==1)
         {
             return 1;
         }
-        else if(diff==2 && row(start)==6 && news_path(start,dest))
+        else if(steps==2 && row(start)==6 && news_path(start,dest))
         {
             return 1;
         }
         return 0;
     }
-    else if(clr==WHITE && diff==1 && column(start)!=column(dest))
+    else if(clr==WHITE && steps==1 && column(start)!=column(dest))
     {
         return color(Coin(dest))==BLACK;
     }
 
-    if(clr==BLACK && Coin(dest)==0 && column(start)==column(dest) && diff<0)
+    if(clr==BLACK && Coin(dest)==0 && column(start)==column(dest) && steps<0)
     {
-        if(diff==-1)
+        if(steps==-1)
         {
             return 1;
         }
-        else if(diff==-2 && row(start)==1 && news_path(start,dest))
+        else if(steps==-2 && row(start)==1 && news_path(start,dest))
         {
             return 1;
         }
         return 0;
     }
-    else if(clr==BLACK && diff==-1 && column(start)!=column(dest))
+    else if(clr==BLACK && steps==-1 && column(start)!=column(dest))
     {
         return color(Coin(dest))==WHITE;
     }
@@ -311,9 +318,7 @@ int news_path(int start,int dest)
 {
     if(start > dest)
     {
-        int tmp=start;
-        start=dest;
-        dest=tmp;
+        swap(&start,&dest);
     }
     if(column(start)==column(dest))
     {
@@ -340,19 +345,17 @@ int news_path(int start,int dest)
     return 1;
 }
 
-int cross_path(int start,int destination)
+int cross_path(int start,int dest)
 {
-    if(start < destination)
+    if(start < dest)
     {
-        int t=start;
-        start=destination;
-        destination=t;
+        swap(&start,&dest);
     }
-    int diff=row(start)-row(destination);
-    if(column(start) < column(destination))
+    int steps=row(start)-row(dest);
+    if(column(start) < column(dest))
     {
         int pos=start;
-        for(int i=1;i<diff;i++)
+        for(int i=1;i<steps;i++)
         {
             pos=(row(pos)-1)*10+(column(pos)+1);
             if(Coin(pos)!=0)
@@ -361,10 +364,10 @@ int cross_path(int start,int destination)
             }
         }
     }
-    else if(column(start) > column(destination))
+    else if(column(start) > column(dest))
     {
         int pos=start;
-        for(int i=1;i<diff;i++)
+        for(int i=1;i<steps;i++)
         {
             pos=(row(pos)-1)*10+(column(pos)-1);
             if(Coin(pos)!=0)
@@ -380,13 +383,11 @@ int is_cross_move(int start,int dest)
 {
     if(start < dest)
     {
-        int t=start;
-        start=dest;
-        dest=t;
+        swap(&start,&dest);
     }
-    int pos=start,diff=row(start)-row(dest);
-    int left_pos=(row(pos)-diff)*10+(column(pos)-diff);
-    int right_pos=(row(pos)-diff)*10+(column(pos)+diff);
+    int pos=start,steps=row(start)-row(dest);
+    int left_pos=(row(pos)-steps)*10+(column(pos)-steps);
+    int right_pos=(row(pos)-steps)*10+(column(pos)+steps);
     return left_pos==dest || right_pos==dest;
 }
 
@@ -437,7 +438,7 @@ int validate_move(int start,int dest)
     {
         return 0;
     }
-    else if(start==dest || color(Coin(start))==color(Coin(dest)))
+    else if(color(Coin(start))==color(Coin(dest)))
     {
         return 0;
     }
@@ -473,7 +474,6 @@ int validate_move(int start,int dest)
     }
 }
 
-//checks check and track the path from where the check is happening
 int is_check(int king_color,int square)
 {
     cpt=-1;
@@ -723,9 +723,9 @@ int move(int start,int dest)
 
 int undo()
 {
-    if(move_log!=NULL)
+    struct log_node *temp=pop_log();
+    if(temp!=NULL)
     {
-        struct log_node *temp=pop_log();
         if(coin_type(temp->from_coin)==PAWN && (row(temp->to)==0 || row(temp->to)==7))
         {
             add_position(temp->from_coin,temp->from,-1);
@@ -752,8 +752,6 @@ int undo()
         board[row(temp->to)][column(temp->to)]=temp->to_coin;   
         free(temp);
         display_name_board();
-        //display_positions();
-        //display_board();
         return 1;
     }
     else
@@ -960,6 +958,7 @@ int is_game_over(int color,int king_position)
     int king_can_move=one_king_move(king_position);
     if(!king_can_move && is_check(color,king_position)!=-1 && !is_check_covered(color))
     {
+        display_name_board();
         if(color==BLACK)
         {
             printf("White won through checkmate\n");
