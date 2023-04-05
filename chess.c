@@ -28,6 +28,7 @@ int black_captured[16],white_captured[16],check_path[8],cpt=-1,wct=-1,bct=-1;
 int black_king_pos=04,white_king_pos=74,autosave=0,file_id=0,white_move=1;
 int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
 int knight_moves[8];
+int white_material=33,black_material=33;
 
 void rook();
 void queen();
@@ -239,6 +240,43 @@ void pop_captured(int color)
     else
     {
         bct--;
+    }
+}
+
+int value(int coin_type)
+{
+    if(coin_type==QUEEN || coin_type==ROOK || coin_type==PAWN)
+    {
+        return 3;
+    }
+    else if(coin_type==BISHOP || coin_type==KNIGHT)
+    {
+        return 2;
+    }
+    return 0;
+}
+
+void add_material(int coin)
+{
+    if(color(coin)==BLACK)
+    {
+        black_material+=value(coin_type(coin));
+    }
+    else
+    {
+        white_material+=value(coin_type(coin));
+    }
+}
+
+void sub_material(int coin)
+{
+    if(color(coin)==BLACK)
+    {
+        black_material-=value(coin_type(coin));
+    }
+    else
+    {
+        white_material-=value(coin_type(coin));
     }
 }
 
@@ -707,6 +745,7 @@ int move(int start,int dest)
         add_position(Coin(start),dest,start);
         if(Coin(dest)!=0)
         {
+            sub_material(Coin(dest));
             push_captured(color(Coin(dest)),Coin(dest));
             delete_position(Coin(dest),dest);
         }
@@ -730,6 +769,8 @@ int undo()
         {
             add_position(temp->from_coin,temp->from,-1);
             delete_position(Coin(temp->to),temp->to);
+            add_material(temp->from_coin);
+            sub_material(Coin(temp->to));
         }
         else
         {
@@ -739,6 +780,7 @@ int undo()
         {
             pop_captured(color(temp->to_coin));
             add_position(temp->to_coin,temp->to,-1);
+            add_material(temp->to_coin);
         }
         if(temp->from_coin==WHITE*10+KING)
         {
@@ -775,8 +817,10 @@ void promote_pawn(int pos)
         if(coin==QUEEN || coin==KNIGHT || coin==ROOK || coin==BISHOP)
         {
             delete_position(Coin(pos),pos);
+            sub_material(Coin(pos));
             board[row(pos)][column(pos)]=color(Coin(pos))*10+coin;
             add_position(Coin(pos),pos,-1);
+            add_material(Coin(pos));
             break;
         }
     }
@@ -956,7 +1000,17 @@ int have_one_move(int color)
 int is_game_over(int color,int king_position)
 {
     int king_can_move=one_king_move(king_position);
-    if(!king_can_move && is_check(color,king_position)!=-1 && !is_check_covered(color))
+    if((black_material==0 && white_material<3) || (black_material<3 && white_material==0))
+    {
+        display_name_board();
+        printf("Drawn due to insufficient mating material\n");
+        if(autosave==1)
+        {
+            read_or_write_board('w');
+        }
+        exit(0);
+    }
+    else if(!king_can_move && is_check(color,king_position)!=-1 && !is_check_covered(color))
     {
         display_name_board();
         if(color==BLACK)
@@ -975,7 +1029,8 @@ int is_game_over(int color,int king_position)
     }
     else if(!king_can_move && !have_one_move(color))
     {
-        printf("Drawn through Stale mate\n");
+        display_name_board();
+        printf("Stale mate\n");
         if(autosave==1)
         {
             read_or_write_board('w');
@@ -1013,8 +1068,11 @@ void read_or_write_board(char mode)
         for(int i=0;i<8;i++)
         {
             for(int j=0;j<8;j++)
-            {
-                fprintf(file,"%d %d ",i*10+j,board[i][j]);
+            {   
+                if(board[i][j]!=0)
+                {
+                    fprintf(file,"%d %d ",i*10+j,board[i][j]);
+                }
             }
         }
         fprintf(file,"%d %d\n",-1,-1);
@@ -1033,7 +1091,8 @@ void read_or_write_board(char mode)
 
         write_move_log(file,move_log);
         fprintf(file,"%d %d %d %d\n",-1,-1,-1,-1);
-        fprintf(file,"%d %d %d\n",white_king_pos,black_king_pos,-1);
+        fprintf(file,"%d %d\n",white_king_pos,black_king_pos);
+        fprintf(file,"%d %d\n",white_material,black_material);
         if(fclose(file)!=0)
         {
             printf("error closing the file\n");
@@ -1077,6 +1136,7 @@ void read_or_write_board(char mode)
             push_log(from,from_coin,to,to_coin);
         }
         fscanf(file,"%d %d",&white_king_pos,&black_king_pos);
+        fscanf(file,"%d %d",&white_material,&black_material);
         if(fclose(file)!=0)
         {
             printf("error closing the file\n");
