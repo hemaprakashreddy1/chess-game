@@ -435,14 +435,14 @@ int is_knight(int coin)
 
 int* generate_knight_moves(int pos)
 {
-    knight_moves[0]=S+S+E;
-    knight_moves[1]=N+N+E;
-    knight_moves[2]=N+N+W;
-    knight_moves[3]=S+S+W;
-    knight_moves[4]=S+E+E;
-    knight_moves[5]=N+E+E;
-    knight_moves[6]=N+W+W;
-    knight_moves[7]=S+W+W;
+    knight_moves[0]=pos+S+S+E;
+    knight_moves[1]=pos+N+N+E;
+    knight_moves[2]=pos+N+N+W;
+    knight_moves[3]=pos+S+S+W;
+    knight_moves[4]=pos+S+E+E;
+    knight_moves[5]=pos+N+E+E;
+    knight_moves[6]=pos+N+W+W;
+    knight_moves[7]=pos+S+W+W;
     return knight_moves;
 }
 
