@@ -860,65 +860,25 @@ int is_check_covered(int color)
     return 0;
 }
 
-int one_top_move(int pos)
-{
-    return validate_move(pos,pos+N);
-}
-
-int one_bottom_move(int pos)
-{
-    return validate_move(pos,pos+S);
-}
-
-int one_left_move(int pos)
-{
-    return validate_move(pos,pos+W);
-}
-
-int one_right_move(int pos)
-{
-    return validate_move(pos,pos+E);
-}
-
 int one_news_move(int pos)
 {
-    return one_top_move(pos) || one_bottom_move(pos) || one_left_move(pos) || one_right_move(pos);
-}
-
-int one_nw_move(int pos)
-{
-    return validate_move(pos,pos+NW);
-}
-
-int one_ne_move(int pos)
-{
-    return validate_move(pos,pos+NE);
-}
-
-int one_se_move(int pos)
-{
-    return validate_move(pos,pos+SE);
-}
-
-int one_sw_move(int pos)
-{
-    return validate_move(pos,pos+SW);
+    return validate_move(pos,pos+N) || validate_move(pos,pos+S) || validate_move(pos,pos+W) || validate_move(pos,pos+E);
 }
 
 int one_cross_move(int pos)
 {
-    return one_ne_move(pos) || one_nw_move(pos) || one_se_move(pos) || one_sw_move(pos);
+    return validate_move(pos,pos+NE) || validate_move(pos,pos+NW) || validate_move(pos,pos+SE) || validate_move(pos,pos+SW);
 }
 
 int one_pawn_move(int pos)
 {
     if(color(Coin(pos))==BLACK)
     {
-        return one_bottom_move(pos) || one_se_move(pos) || one_sw_move(pos);
+        return validate_move(pos,pos+S) || validate_move(pos,pos+SE) || validate_move(pos,pos+SW);
     }
     else
     {
-        return one_top_move(pos) || one_ne_move(pos) || one_nw_move(pos);
+        return validate_move(pos,pos+N) || validate_move(pos,pos+NE) || validate_move(pos,pos+NW);
     }
 }
 
