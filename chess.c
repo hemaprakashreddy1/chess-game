@@ -29,6 +29,7 @@ int black_king_pos=04,white_king_pos=74,autosave=0,file_id=0,white_move=1;
 int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
 int knight_moves[8];
 int white_material=33,black_material=33;
+int N=-10,S=10,E=1,W=-1,NW=-11,NE=-9,SW=9,SE=11;
 
 void rook();
 void queen();
@@ -71,11 +72,6 @@ int Coin(int pos)
 int color(int coin)
 {
     return coin/10;
-}
-
-int position(int row,int column)
-{
-    return row*10+column;
 }
 
 int coin_type(int coin)
@@ -395,7 +391,7 @@ int cross_path(int start,int dest)
         int pos=start;
         for(int i=1;i<steps;i++)
         {
-            pos=(row(pos)-1)*10+(column(pos)+1);
+            pos=pos+NE;
             if(Coin(pos)!=0)
             {
                 return 0;
@@ -407,7 +403,7 @@ int cross_path(int start,int dest)
         int pos=start;
         for(int i=1;i<steps;i++)
         {
-            pos=(row(pos)-1)*10+(column(pos)-1);
+            pos=pos+NW;
             if(Coin(pos)!=0)
             {
                 return 0;
@@ -424,9 +420,7 @@ int is_cross_move(int start,int dest)
         swap(&start,&dest);
     }
     int pos=start,steps=row(start)-row(dest);
-    int left_pos=(row(pos)-steps)*10+(column(pos)-steps);
-    int right_pos=(row(pos)-steps)*10+(column(pos)+steps);
-    return left_pos==dest || right_pos==dest;
+    return pos+NW*steps==dest || pos+NE*steps==dest;
 }
 
 int can_move_cross(int coin)
@@ -441,14 +435,14 @@ int is_knight(int coin)
 
 int* generate_knight_moves(int pos)
 {
-    knight_moves[0]=(pos/10+2)*10+(pos%10+1);
-    knight_moves[1]=(pos/10-2)*10+(pos%10+1);
-    knight_moves[2]=(pos/10-2)*10+(pos%10-1);
-    knight_moves[3]=(pos/10+2)*10+(pos%10-1);
-    knight_moves[4]=(pos/10+1)*10+(pos%10+2);
-    knight_moves[5]=(pos/10-1)*10+(pos%10+2);
-    knight_moves[6]=(pos/10-1)*10+(pos%10-2);
-    knight_moves[7]=(pos/10+1)*10+(pos%10-2);
+    knight_moves[0]=S+S+E;
+    knight_moves[1]=N+N+E;
+    knight_moves[2]=N+N+W;
+    knight_moves[3]=S+S+W;
+    knight_moves[4]=S+E+E;
+    knight_moves[5]=N+E+E;
+    knight_moves[6]=N+W+W;
+    knight_moves[7]=S+W+W;
     return knight_moves;
 }
 
@@ -599,7 +593,7 @@ int is_check(int king_color,int square)
     cpt=-1;
     for(int i=0;i<min;i++)
     {
-        pos=(row(pos)-1)*10+(column(pos)-1);
+        pos=pos+NW;
         push_check_path(pos);
         if(color(Coin(pos))==king_color)
         {
@@ -619,7 +613,7 @@ int is_check(int king_color,int square)
     pos=square;
     for(int i=0;i<(7-max);i++)
     {
-        pos=(row(pos)+1)*10+(column(pos)+1);
+        pos=pos+SE;
         push_check_path(pos);
         if(color(Coin(pos))==king_color)
         {
@@ -648,7 +642,7 @@ int is_check(int king_color,int square)
     pos=square;
     for(int i=0;i<steps;i++)
     {
-        pos=(row(pos)-1)*10+(column(pos)+1);
+        pos=pos+NE;
         push_check_path(pos);
         if(color(Coin(pos))==king_color)
         {
@@ -676,7 +670,7 @@ int is_check(int king_color,int square)
     pos=square;
     for(int i=0;i<steps;i++)
     {
-        pos=(row(pos)+1)*10+(column(pos)-1);
+        pos=pos+SW;
         push_check_path(pos);
         if(color(Coin(pos))==king_color)
         {
@@ -868,22 +862,22 @@ int is_check_covered(int color)
 
 int one_top_move(int pos)
 {
-    return validate_move(pos,position(row(pos)-1,column(pos)));
+    return validate_move(pos,pos+N);
 }
 
 int one_bottom_move(int pos)
 {
-    return validate_move(pos,position(row(pos)+1,column(pos)));
+    return validate_move(pos,pos+S);
 }
 
 int one_left_move(int pos)
 {
-    return validate_move(pos,position(row(pos),column(pos)-1));
+    return validate_move(pos,pos+W);
 }
 
 int one_right_move(int pos)
 {
-    return validate_move(pos,position(row(pos),column(pos)+1));
+    return validate_move(pos,pos+E);
 }
 
 int one_news_move(int pos)
@@ -893,22 +887,22 @@ int one_news_move(int pos)
 
 int one_nw_move(int pos)
 {
-    return validate_move(pos,position(row(pos)-1,column(pos)-1));
+    return validate_move(pos,pos+NW);
 }
 
 int one_ne_move(int pos)
 {
-    return validate_move(pos,position(row(pos)-1,column(pos)+1));
+    return validate_move(pos,pos+NE);
 }
 
 int one_se_move(int pos)
 {
-    return validate_move(pos,position(row(pos)+1,column(pos)+1));
+    return validate_move(pos,pos+SE);
 }
 
 int one_sw_move(int pos)
 {
-    return validate_move(pos,position(row(pos)+1,column(pos)-1));
+    return validate_move(pos,pos+SW);
 }
 
 int one_cross_move(int pos)
@@ -928,12 +922,12 @@ int one_pawn_move(int pos)
     }
 }
 
-int one_knight_move(int coin,int pos)
+int one_knight_move(int clr,int pos)
 {
     int *moves=generate_knight_moves(pos);
     for(int i=0;i<8;i++)
     {
-        if(is_valid_pos(moves[i]) && color(Coin(moves[i]))!=color(coin))
+        if(is_valid_pos(moves[i]) && color(Coin(moves[i]))!=clr)
         {
             return !is_check_after_move(pos,moves[i]);
         }
@@ -962,7 +956,7 @@ int one_move(int type,int pos)
     }
     else if(type==KNIGHT)
     {
-        return one_knight_move(Coin(pos),pos);
+        return one_knight_move(color(Coin(pos)),pos);
     }
     else if(type==QUEEN)
     {
