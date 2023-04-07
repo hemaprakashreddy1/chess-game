@@ -419,8 +419,8 @@ int is_cross_move(int start,int dest)
     {
         swap(&start,&dest);
     }
-    int pos=start,steps=row(start)-row(dest);
-    return pos+NW*steps==dest || pos+NE*steps==dest;
+    int steps=row(start)-row(dest);
+    return start+NW*steps==dest || start+NE*steps==dest;
 }
 
 int can_move_cross(int coin)
