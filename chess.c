@@ -28,7 +28,7 @@ int black_captured[16],white_captured[16],check_path[8],cpt=-1,wct=-1,bct=-1;
 int black_king_pos=04,white_king_pos=74,autosave=0,file_id=0,white_move=1;
 int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
 int knight_moves[8];
-int white_material=33,black_material=33;
+int white_material=143,black_material=143;
 int N=-10,S=10,E=1,W=-1,NW=-11,NE=-9,SW=9,SE=11;
 
 void rook();
@@ -239,15 +239,26 @@ void pop_captured(int color)
     }
 }
 
-int value(int coin_type)
+int value(int color,int coin_type)
 {
     if(coin_type==QUEEN || coin_type==ROOK || coin_type==PAWN)
     {
-        return 3;
+        return 10;
     }
-    else if(coin_type==BISHOP || coin_type==KNIGHT)
+    else if(coin_type==KNIGHT)
     {
-        return 2;
+        return 9;
+    }
+    else if(coin_type==BISHOP)
+    {
+        if(color==BLACK)
+        {
+            return 8;
+        }
+        else
+        {
+            return 7;
+        }
     }
     return 0;
 }
@@ -256,11 +267,11 @@ void add_material(int coin)
 {
     if(color(coin)==BLACK)
     {
-        black_material+=value(coin_type(coin));
+        black_material+=value(color(coin),coin_type(coin));
     }
     else
     {
-        white_material+=value(coin_type(coin));
+        white_material+=value(color(coin),coin_type(coin));
     }
 }
 
@@ -268,11 +279,11 @@ void sub_material(int coin)
 {
     if(color(coin)==BLACK)
     {
-        black_material-=value(coin_type(coin));
+        black_material-=value(color(coin),coin_type(coin));
     }
     else
     {
-        white_material-=value(coin_type(coin));
+        white_material-=value(color(coin),coin_type(coin));
     }
 }
 
@@ -954,10 +965,10 @@ int have_one_move(int color)
 int is_game_over(int color,int king_position)
 {
     int king_can_move=one_king_move(king_position);
-    if((black_material==0 && white_material<3) || (black_material<3 && white_material==0))
+    if(black_material+white_material<10 || (black_material+white_material <=16 && black_material==white_material))
     {
         display_name_board();
-        printf("Drawn due to insufficient mating material\n");
+        printf("Drawn by insufficient material\n");
         if(autosave==1)
         {
             read_or_write_board('w');
@@ -969,11 +980,11 @@ int is_game_over(int color,int king_position)
         display_name_board();
         if(color==BLACK)
         {
-            printf("White won through checkmate\n");
+            printf("White won by checkmate\n");
         }
         else
         {
-            printf("Black won through checkmate\n");
+            printf("Black won by checkmate\n");
         }
         if(autosave==1)
         {
