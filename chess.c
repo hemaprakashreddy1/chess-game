@@ -26,10 +26,10 @@ int queen_shape[7][7];
 int king_shape[7][7];
 int black_captured[16],white_captured[16],check_path[8],cpt=-1,wct=-1,bct=-1;
 int black_king_pos=04,white_king_pos=74,autosave=0,file_id=0,white_move=1;
-int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
+const int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
 int knight_moves[8];
 int white_material=143,black_material=143;
-int N=-10,S=10,E=1,W=-1,NW=-11,NE=-9,SW=9,SE=11;
+const int N=-10,S=10,E=1,W=-1,NW=-11,NE=-9,SW=9,SE=11;
 
 void rook();
 void queen();
@@ -251,14 +251,7 @@ int value(int color,int coin_type)
     }
     else if(coin_type==BISHOP)
     {
-        if(color==BLACK)
-        {
-            return 8;
-        }
-        else
-        {
-            return 7;
-        }
+        return 6+color;
     }
     return 0;
 }
@@ -969,11 +962,7 @@ int is_game_over(int color,int king_position)
     {
         display_name_board();
         printf("Drawn by insufficient material\n");
-        if(autosave==1)
-        {
-            read_or_write_board('w');
-        }
-        exit(0);
+        return 1;
     }
     else if(!king_can_move && is_check(color,king_position)!=-1 && !is_check_covered(color))
     {
@@ -986,21 +975,13 @@ int is_game_over(int color,int king_position)
         {
             printf("Black won by checkmate\n");
         }
-        if(autosave==1)
-        {
-            read_or_write_board('w');
-        }
-        exit(0);
+        return 1;
     }
     else if(!king_can_move && !have_one_move(color))
     {
         display_name_board();
-        printf("Stale mate\n");
-        if(autosave==1)
-        {
-            read_or_write_board('w');
-        }
-        exit(0);
+        printf("Drawn by Stale mate\n");
+        return 1;
     }
     return 0;
 }
@@ -1131,12 +1112,18 @@ void start_game()
             if(move_log!=NULL && color(move_log->from_coin)==WHITE)
             {
                 white_move=0;
-                is_game_over(BLACK,black_king_pos);
+                if(is_game_over(BLACK,black_king_pos))
+                {
+                    exit(0);
+                }
             }
             else
             {
                 white_move==1;
-                is_game_over(WHITE,white_king_pos);
+                if(is_game_over(WHITE,white_king_pos))
+                {
+                    exit(0);
+                }
             }
             break;
         }
@@ -1252,7 +1239,14 @@ int main()
                 {
                     white_king_pos=to;
                 }
-                is_game_over(BLACK,black_king_pos);
+                if(is_game_over(BLACK,black_king_pos))
+                {
+                    if(autosave==1)
+                    {
+                        read_or_write_board('w');
+                    }
+                    exit(0);
+                }
             }
             white_move=0;
         }
@@ -1293,7 +1287,14 @@ int main()
                 {
                     black_king_pos=to;
                 }
-                is_game_over(WHITE,white_king_pos);
+                if(is_game_over(WHITE,white_king_pos))
+                {
+                    if(autosave==1)
+                    {
+                        read_or_write_board('w');
+                    }
+                    exit(0);
+                }
             }
             white_move=1;
         }
