@@ -12,6 +12,7 @@ struct log_node
     int from_coin;
     int to;
     int to_coin;
+    int move_type;
     struct log_node *next;
 };
 
@@ -30,6 +31,7 @@ const int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
 int knight_moves[8];
 int white_material=143,black_material=143;
 const int N=-10,S=10,E=1,W=-1,NW=-11,NE=-9,SW=9,SE=11;
+const int NORMAL=1,EN_PASSANT=4;
 
 void rook();
 void queen();
@@ -113,22 +115,20 @@ void add_position(int coin,int cur_pos,int prev_pos)
     else
     {
         temp=positions[hash];
-        while(temp!=NULL)
+        while(temp->pos!=prev_pos && temp->next!=NULL)
         {
-            if(temp->pos==prev_pos)
-            {
-                temp->pos=cur_pos; 
-                break;
-            }
-            if(temp->next==NULL)
-            {
-                new=(struct pos_node*)malloc(sizeof(struct pos_node));
-                new->pos=cur_pos;
-                new->next=NULL;
-                temp->next=new;
-                break;
-            }
             temp=temp->next;
+        }
+        if(temp->pos==prev_pos)
+        {
+            temp->pos=cur_pos;
+        }
+        else if(temp->next==NULL)
+        {
+            new=(struct pos_node*)malloc(sizeof(struct pos_node));
+            new->pos=cur_pos;
+            new->next=NULL;
+            temp->next=new;
         }
     }
 }
@@ -182,13 +182,14 @@ void init_hash_table()
     }
 }
 
-void push_log(int from,int from_coin,int to,int to_coin)
+void push_log(int from,int from_coin,int to,int to_coin,int move_type)
 {
     struct log_node *new=(struct log_node*)malloc(sizeof(struct log_node));
     new->from=from;
     new->to=to;
     new->from_coin=from_coin;
     new->to_coin=to_coin;
+    new->move_type=move_type;
     if(move_log==NULL)
     {
         move_log=new;
@@ -290,6 +291,28 @@ int can_move_news(int coin)
     return coin_type(coin)!=KNIGHT && coin_type(coin)!=BISHOP;
 }
 
+int is_en_passant(int start,int dest)
+{
+    if(move_log==NULL)
+    {
+        return 0;
+    }
+    else if(coin_type(move_log->from_coin)!=PAWN)
+    {
+        return 0;
+    }
+    int last_mv_steps = row(move_log->from) - row(move_log->to);
+    if(color(Coin(start))==WHITE && last_mv_steps == -2 && dest+S==move_log->to)
+    {
+        return EN_PASSANT;
+    }
+    else if(color(Coin(start))==BLACK && last_mv_steps == 2 && dest+N==move_log->to)
+    {
+        return EN_PASSANT;
+    }
+    return 0;
+}
+
 int pawn_move(int start,int dest)
 {
     int clr=color(Coin(start)),steps=row(start)-row(dest);
@@ -307,7 +330,14 @@ int pawn_move(int start,int dest)
     }
     else if(clr==WHITE && steps==1 && column(start)!=column(dest))
     {
-        return color(Coin(dest))==BLACK;
+        if(color(Coin(dest))==BLACK)
+        {
+            return 1;
+        }
+        else if(row(start)==3)
+        {
+            return is_en_passant(start,dest);
+        }
     }
 
     if(clr==BLACK && Coin(dest)==0 && column(start)==column(dest) && steps<0)
@@ -324,7 +354,14 @@ int pawn_move(int start,int dest)
     }
     else if(clr==BLACK && steps==-1 && column(start)!=column(dest))
     {
-        return color(Coin(dest))==WHITE;
+        if(color(Coin(dest))==WHITE)
+        {
+            return 1;
+        }
+        else if(row(start)==4)
+        {
+            return is_en_passant(start,dest);
+        }
     }
     return 0;
 }
@@ -480,34 +517,40 @@ int validate_move(int start,int dest)
     }
     else if(is_knight(Coin(start)))
     {
-        return is_knight_move(start,dest) && !is_check_after_move(start,dest);
+        return is_knight_move(start,dest) && !is_check_after_move(start,dest,NORMAL);
     }
     else if(can_move_news(Coin(start)) && is_news_move(start,dest))
     {
         if(coin_type(Coin(start))==KING || coin_type(Coin(start))==PAWN)
         {
-            return steps_limit(start,dest) && !is_check_after_move(start,dest);
+            return steps_limit(start,dest) && !is_check_after_move(start,dest,NORMAL);
         }
         else
         {
-            return news_path(start,dest) && !is_check_after_move(start,dest);
+            return news_path(start,dest) && !is_check_after_move(start,dest,NORMAL);
         }
     }
     else if(can_move_cross(Coin(start)) && is_cross_move(start,dest))
     {
-        if(coin_type(Coin(start))==KING || coin_type(Coin(start))==PAWN)
+        if(coin_type(Coin(start))==KING)
         {
-            return steps_limit(start,dest) && !is_check_after_move(start,dest);
+            return steps_limit(start,dest) && !is_check_after_move(start,dest,NORMAL);
+        }
+        else if(coin_type(Coin(start))==PAWN)
+        {
+            int move_type=pawn_move(start,dest);
+            if(move_type!=0 && !is_check_after_move(start,dest,move_type))
+            {
+                return move_type;
+            }
+            return 0;
         }
         else
         {
-            return cross_path(start,dest) && !is_check_after_move(start,dest);
+            return cross_path(start,dest) && !is_check_after_move(start,dest,NORMAL);
         }
     }
-    else
-    {
-        return 0;
-    }
+    return 0;
 }
 
 int is_check(int king_color,int square)
@@ -712,7 +755,7 @@ int is_check(int king_color,int square)
     return -1;
 }
 
-int is_check_after_move(int start,int dest)
+int is_check_after_move(int start,int dest,int move_type)
 {
     int start_coin=Coin(start),dest_coin=Coin(dest),check,king_pos;
     if(coin_type(start_coin)==KING)
@@ -729,23 +772,66 @@ int is_check_after_move(int start,int dest)
     }
     board[row(dest)][column(dest)]=board[row(start)][column(start)];
     board[row(start)][column(start)]=0;
+    int en_pass_pos,en_coin;
+    if(move_type == EN_PASSANT)
+    {
+        if(color(start_coin) == BLACK)
+        {
+            en_pass_pos=dest+N;
+            en_coin=Coin(en_pass_pos);
+            board[row(dest+N)][column(dest+N)]=0;
+        }
+        else
+        {
+            en_pass_pos=dest+S;
+            en_coin=Coin(en_pass_pos);
+            board[row(dest+S)][column(dest+S)]=0;
+        }
+    }
     check=is_check(color(start_coin),king_pos);
     board[row(start)][column(start)]=start_coin;
     board[row(dest)][column(dest)]=dest_coin;
+    if(move_type == EN_PASSANT)
+    {
+        board[row(en_pass_pos)][column(en_pass_pos)]=en_coin;
+    }
     return check!=-1;
+}
+
+void en_passant(int start,int dest)
+{
+    if(color(Coin(start))==BLACK)
+    {
+        sub_material(Coin(dest+N));
+        push_captured(color(Coin(dest+N)),Coin(dest+N));
+        delete_position(Coin(dest+N),dest+N);
+        board[row(dest+N)][column(dest+N)]=0;
+    }
+    else
+    {
+        sub_material(Coin(dest+S));
+        push_captured(color(Coin(dest+S)),Coin(dest+S));
+        delete_position(Coin(dest+S),dest+S);
+        board[row(dest+S)][column(dest+S)]=0;
+    }
 }
 
 int move(int start,int dest)
 {
-    if(validate_move(start,dest))
+    int move_type = validate_move(start,dest);
+    if(move_type)
     {
-        push_log(start,Coin(start),dest,Coin(dest));
+        push_log(start,Coin(start),dest,Coin(dest),move_type);
         add_position(Coin(start),dest,start);
         if(Coin(dest)!=0)
         {
             sub_material(Coin(dest));
             push_captured(color(Coin(dest)),Coin(dest));
             delete_position(Coin(dest),dest);
+        }
+        else if(move_type == EN_PASSANT)
+        {
+            en_passant(start,dest);
         }
         board[row(dest)][column(dest)]=Coin(start);
         board[row(start)][column(start)]=0;
@@ -779,6 +865,23 @@ int undo()
             pop_captured(color(temp->to_coin));
             add_position(temp->to_coin,temp->to,-1);
             add_material(temp->to_coin);
+        }
+        else if(temp->move_type==EN_PASSANT)
+        {
+            if(color(temp->from_coin)==WHITE)
+            {
+                pop_captured(BLACK);
+                add_material(BLACK*10+PAWN);
+                add_position(BLACK*10+PAWN,temp->to+S,-1);
+                board[row(temp->to+S)][column(temp->to+S)]=BLACK*10+PAWN; 
+            }
+            else
+            {
+                pop_captured(WHITE);
+                add_material(WHITE*10+PAWN);
+                add_position(WHITE*10+PAWN,temp->to+N,-1);
+                board[row(temp->to+N)][column(temp->to+N)]=WHITE*10+PAWN; 
+            }
         }
         if(temp->from_coin==WHITE*10+KING)
         {
@@ -893,7 +996,7 @@ int one_knight_move(int clr,int pos)
     {
         if(is_valid_pos(moves[i]) && color(Coin(moves[i]))!=clr)
         {
-            return !is_check_after_move(pos,moves[i]);
+            return !is_check_after_move(pos,moves[i],NORMAL);
         }
     }
     return 0;
@@ -995,7 +1098,7 @@ void write_move_log(FILE *file,struct log_node*temp)
     }
     if(temp!=NULL)
     {
-        fprintf(file,"%d %d %d %d ",temp->from,temp->from_coin,temp->to,temp->to_coin);
+        fprintf(file,"%d %d %d %d %d ",temp->from,temp->from_coin,temp->to,temp->to_coin,temp->move_type);
     }
 }
 void read_or_write_board(char mode)
@@ -1036,7 +1139,7 @@ void read_or_write_board(char mode)
         fprintf(file,"%d\n",-1);
 
         write_move_log(file,move_log);
-        fprintf(file,"%d %d %d %d\n",-1,-1,-1,-1);
+        fprintf(file,"%d %d %d %d %d\n",-1,-1,-1,-1,-1);
         fprintf(file,"%d %d\n",white_king_pos,black_king_pos);
         fprintf(file,"%d %d\n",white_material,black_material);
         if(fclose(file)!=0)
@@ -1072,14 +1175,14 @@ void read_or_write_board(char mode)
             push_captured(color(coin),coin);
         }
         //reading_move_log
-        int from,from_coin,to,to_coin;
-        while(fscanf(file,"%d %d %d %d",&from,&from_coin,&to,&to_coin)!=EOF)
+        int from,from_coin,to,to_coin,mv_type;
+        while(fscanf(file,"%d %d %d %d %d",&from,&from_coin,&to,&to_coin,&mv_type)!=EOF)
         {
             if(from == -1)
             {
                 break;
             }
-            push_log(from,from_coin,to,to_coin);
+            push_log(from,from_coin,to,to_coin,mv_type);
         }
         fscanf(file,"%d %d",&white_king_pos,&black_king_pos);
         fscanf(file,"%d %d",&white_material,&black_material);
@@ -1206,12 +1309,9 @@ int main()
         {
             printf("whites move ");
             scanf("%d %d",&from,&to);
-            if(from==3 && to==3)
+            if((from==3 && to==3) && undo())
             {
-                if(undo())
-                {
-                    white_move=0;
-                }
+                white_move=0;
                 continue;
             }
             else if(from==-2 && to ==-2)
@@ -1245,7 +1345,7 @@ int main()
                     {
                         read_or_write_board('w');
                     }
-                    exit(0);
+                    break;
                 }
             }
             white_move=0;
@@ -1254,12 +1354,9 @@ int main()
         {
             printf("black move ");
             scanf("%d %d",&from,&to);
-            if(from==3 && to==3)
+            if((from==3 && to==3) && undo())
             {
-                if(undo())
-                {
-                    white_move=1;
-                }
+                white_move=1;
                 continue;
             }
             else if(from==-2 && to ==-2)
@@ -1293,7 +1390,7 @@ int main()
                     {
                         read_or_write_board('w');
                     }
-                    exit(0);
+                    break;
                 }
             }
             white_move=1;
