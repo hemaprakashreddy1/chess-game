@@ -252,7 +252,7 @@ void pop_captured(int color)
     }
 }
 
-int value(int color,int coin_type)
+int value(int pos, int coin_type)
 {
     if(coin_type==QUEEN || coin_type==ROOK || coin_type==PAWN)
     {
@@ -264,32 +264,36 @@ int value(int color,int coin_type)
     }
     else if(coin_type==BISHOP)
     {
-        return 6+color;
+        if((row(pos) + column(pos)) % 2 == 0)
+        {
+            return 6 + WHITE;
+        }
+        return 6 + BLACK; 
     }
     return 0;
 }
 
-void add_material(int coin)
+void add_material(int coin, int pos)
 {
     if(color(coin)==BLACK)
     {
-        black_material+=value(color(coin),coin_type(coin));
+        black_material+=value(pos,coin_type(coin));
     }
     else
     {
-        white_material+=value(color(coin),coin_type(coin));
+        white_material+=value(pos,coin_type(coin));
     }
 }
 
-void sub_material(int coin)
+void sub_material(int coin, int pos)
 {
     if(color(coin)==BLACK)
     {
-        black_material-=value(color(coin),coin_type(coin));
+        black_material-=value(pos,coin_type(coin));
     }
     else
     {
-        white_material-=value(color(coin),coin_type(coin));
+        white_material-=value(pos,coin_type(coin));
     }
 }
 
@@ -834,14 +838,14 @@ void en_passant(int start,int dest)
 {
     if(color(Coin(start))==BLACK)
     {
-        sub_material(Coin(dest+N));
+        sub_material(Coin(dest+N), -1);
         push_captured(color(Coin(dest+N)),Coin(dest+N));
         delete_position(Coin(dest+N),dest+N);
         board[row(dest+N)][column(dest+N)]=0;
     }
     else
     {
-        sub_material(Coin(dest+S));
+        sub_material(Coin(dest+S), -1);
         push_captured(color(Coin(dest+S)),Coin(dest+S));
         delete_position(Coin(dest+S),dest+S);
         board[row(dest+S)][column(dest+S)]=0;
@@ -984,7 +988,7 @@ int move(int start,int dest)
         add_position(Coin(start),dest,start);
         if(Coin(dest)!=0)
         {
-            sub_material(Coin(dest));
+            sub_material(Coin(dest), dest);
             push_captured(color(Coin(dest)),Coin(dest));
             delete_position(Coin(dest),dest);
             if(coin_type(Coin(dest)) == ROOK)
@@ -1034,8 +1038,8 @@ int undo()
         {
             add_position(temp->from_coin,temp->from,-1);
             delete_position(Coin(temp->to),temp->to);
-            add_material(temp->from_coin);
-            sub_material(Coin(temp->to));
+            add_material(temp->from_coin, temp->from);
+            sub_material(Coin(temp->to), temp->to);
         }
         else
         {
@@ -1050,7 +1054,7 @@ int undo()
         {
             pop_captured(color(temp->to_coin));
             add_position(temp->to_coin,temp->to, -1);
-            add_material(temp->to_coin);
+            add_material(temp->to_coin, temp->to);
             if(coin_type(temp->to_coin) == ROOK)
             {
                 add_rook_info(temp->to, temp->to, 2, 1);
@@ -1061,14 +1065,14 @@ int undo()
             if(color(temp->from_coin)==WHITE)
             {
                 pop_captured(BLACK);
-                add_material(BLACK*10+PAWN);
+                add_material(BLACK*10+PAWN, -1);
                 add_position(BLACK*10+PAWN,temp->to+S,-1);
                 board[row(temp->to+S)][column(temp->to+S)]=BLACK*10+PAWN; 
             }
             else
             {
                 pop_captured(WHITE);
-                add_material(WHITE*10+PAWN);
+                add_material(WHITE*10+PAWN, -1);
                 add_position(WHITE*10+PAWN,temp->to+N,-1);
                 board[row(temp->to+N)][column(temp->to+N)]=WHITE*10+PAWN; 
             }
@@ -1121,6 +1125,7 @@ int undo()
         board[row(temp->to)][column(temp->to)]=temp->to_coin;   
         free(temp);
         display_name_board();
+        //display_board();
         return 1;
     }
     else
@@ -1144,10 +1149,10 @@ void promote_pawn(int pos)
         if(coin==QUEEN || coin==KNIGHT || coin==ROOK || coin==BISHOP)
         {
             delete_position(Coin(pos),pos);
-            sub_material(Coin(pos));
+            sub_material(Coin(pos), pos);
             board[row(pos)][column(pos)]=color(Coin(pos))*10+coin;
             add_position(Coin(pos),pos,-1);
-            add_material(Coin(pos));
+            add_material(Coin(pos), pos);
             break;
         }
     }
@@ -1783,7 +1788,7 @@ void display_board()
                     coin_shape(board[i][j],k,board[i][j]/10);
                     printf("   |");
                 }
-                else if((j%2==0 && i%2==0) || (j%2!=0 && i%2!=0))
+                else if((j+i)%2 == 0)
                 {
                     print_white_space();
                     printf("|");
