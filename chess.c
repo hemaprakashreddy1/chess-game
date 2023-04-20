@@ -806,14 +806,14 @@ void en_passant(int start,int dest)
 {
     if(color(Coin(start))==BLACK)
     {
-        sub_material(Coin(dest+N));
+        sub_material(Coin(dest+N), -1);
         push_captured(color(Coin(dest+N)),Coin(dest+N));
         delete_position(Coin(dest+N),dest+N);
         board[row(dest+N)][column(dest+N)]=0;
     }
     else
     {
-        sub_material(Coin(dest+S));
+        sub_material(Coin(dest+S), -1);
         push_captured(color(Coin(dest+S)),Coin(dest+S));
         delete_position(Coin(dest+S),dest+S);
         board[row(dest+S)][column(dest+S)]=0;
@@ -875,14 +875,14 @@ int undo()
             if(color(temp->from_coin)==WHITE)
             {
                 pop_captured(BLACK);
-                add_material(BLACK*10+PAWN);
+                add_material(BLACK*10+PAWN, -1);
                 add_position(BLACK*10+PAWN,temp->to+S,-1);
                 board[row(temp->to+S)][column(temp->to+S)]=BLACK*10+PAWN; 
             }
             else
             {
                 pop_captured(WHITE);
-                add_material(WHITE*10+PAWN);
+                add_material(WHITE*10+PAWN, -1);
                 add_position(WHITE*10+PAWN,temp->to+N,-1);
                 board[row(temp->to+N)][column(temp->to+N)]=WHITE*10+PAWN; 
             }
