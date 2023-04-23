@@ -36,7 +36,7 @@ int top = 0, promotion = -1, from_pos[6], to_pos;
 struct log_node *move_log;
 struct pos_node *black_positions[6],*white_positions[6];
 struct rook_info rooks[4];
-int captured_rooks[4], crt = -1;
+
 int board[8][8];
 int pawn_shape[7][7];
 int rook_shape[7][7];
@@ -44,7 +44,10 @@ int bishop_shape[7][7];
 int knight_shape[7][7];
 int queen_shape[7][7];
 int king_shape[7][7];
+
 int black_captured[16],white_captured[16],check_path[8],cpt=-1,wct=-1,bct=-1;
+int captured_rooks[4], crt = -1;
+
 int black_king_pos=04,white_king_pos=74,autosave=0,file_id=0,white_move=1;
 const int WHITE=1,BLACK=2,PAWN=6,ROOK=7,BISHOP=8,KNIGHT=5,KING=3,QUEEN=4;
 int knight_moves[8];
@@ -121,10 +124,7 @@ struct pos_node** get_positions(int color)
     {
         return black_positions;
     }
-    else
-    {
-        return white_positions;
-    }
+    return white_positions;
 }
 
 struct pos_node* get_same_type(int coin, struct pos_node** positions)
@@ -169,7 +169,8 @@ void delete_position(int coin,int pos)
 {
     struct pos_node *temp,**positions;
     int hash=pos_hash(coin);
-    positions = get_positions(color(coin));   
+    positions = get_positions(color(coin));
+
     temp=positions[hash];
     if(temp!=NULL && positions[hash]->pos==pos)
     {
@@ -215,6 +216,7 @@ void push_log(int from,int from_coin,int to,int to_coin,int move_type)
     new->from_coin=from_coin;
     new->to_coin=to_coin;
     new->move_type=move_type;
+
     if(move_log==NULL)
     {
         move_log=new;
@@ -322,14 +324,11 @@ int can_move_news(int coin)
 
 int is_en_passant(int start,int dest)
 {
-    if(move_log==NULL)
+    if(move_log != NULL && coin_type(move_log->from_coin)!=PAWN)
     {
         return 0;
     }
-    else if(coin_type(move_log->from_coin)!=PAWN)
-    {
-        return 0;
-    }
+    
     int last_mv_steps = row(move_log->from) - row(move_log->to);
     if(color(Coin(start))==WHITE && last_mv_steps == -2 && dest+S==move_log->to)
     {
@@ -400,6 +399,15 @@ int is_valid_pos(int pos)
     return row(pos)>=0 && row(pos)<8 && column(pos)<8 && column(pos)>=0;
 }
 
+int king_moves(int color)
+{
+    if(color == BLACK)
+    {
+        return black_king_moves;
+    }
+    return white_king_moves;
+}
+
 int steps_limit(int start,int dest)
 {
     if(coin_type(Coin(start))==KING)
@@ -410,7 +418,7 @@ int steps_limit(int start,int dest)
         {
             return 1;
         }
-        else if((column_steps == 2 || column_steps == -2) && (black_king_moves == 0 || white_king_moves == 0))
+        else if((column_steps == 2 || column_steps == -2) && king_moves(color(Coin(start))) == 0)
         {
             return can_castle(color(Coin(start)), start, dest);
         }
@@ -1174,18 +1182,12 @@ void promote_pawn(int pos)
 
 int cover_check(int pos,int color)
 {
-    struct pos_node **hashtable,*temp;
-    if(color == BLACK)
-    {
-        hashtable=black_positions;
-    }
-    else
-    {
-        hashtable=white_positions;
-    }
+    struct pos_node **positions,*temp;
+    positions = get_positions(color);
+
     for(int i=0;i<6;i++)
     {
-        temp=hashtable[i];
+        temp=positions[i];
         while(temp!=NULL)
         {
             if(coin_type(Coin(temp->pos))!=KING && validate_move(temp->pos,pos))
@@ -1280,14 +1282,8 @@ int one_move(int type,int pos)
 int have_one_move(int color)
 {
     struct pos_node **positions,*coins;
-    if(color==BLACK)
-    {
-        positions=black_positions;
-    }
-    else
-    {
-        positions=white_positions;
-    }
+    positions = get_positions(color);
+
     for(int i=0;i<6;i++)
     {
         coins=positions[i];
