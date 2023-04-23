@@ -404,7 +404,7 @@ int steps_limit(int start,int dest)
         {
             return 1;
         }
-        else if((column_steps == 2 || column_steps == -2) && king_moves(color(Coin(start)) == 0))
+        else if((column_steps == 2 || column_steps == -2) && king_moves(color(Coin(start))) == 0)
         {
             return can_castle(color(Coin(start)), start, dest);
         }
