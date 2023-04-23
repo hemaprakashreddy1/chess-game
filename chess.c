@@ -1312,18 +1312,21 @@ int is_game_over(int color,int king_position)
         printf("Drawn by insufficient material\n");
         return 1;
     }
-    else if(!king_can_move && is_check(color,king_position)!=-1 && !is_check_covered(color))
+    else if(!king_can_move && is_check(color,king_position)!=-1)
     {
-        display_name_board();
-        if(color==BLACK)
+        if(!is_check_covered(color))
         {
-            printf("White won by checkmate\n");
+            display_name_board();
+            if(color==BLACK)
+            {
+                printf("White won by checkmate\n");
+            }
+            else
+            {
+                printf("Black won by checkmate\n");
+            }
+            return 1;
         }
-        else
-        {
-            printf("Black won by checkmate\n");
-        }
-        return 1;
     }
     else if(!king_can_move && !have_one_move(color))
     {
