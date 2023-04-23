@@ -23,6 +23,16 @@ struct rook_info
     int captured;
 };
 
+//
+struct moves
+{
+    char notation[5];
+    struct moves *next;
+};
+
+struct moves *front, *rear;
+int top = 0, promotion = -1, from_pos[6], to_pos;
+//
 struct log_node *move_log;
 struct pos_node *black_positions[6],*white_positions[6];
 struct rook_info rooks[4];
@@ -105,18 +115,28 @@ void swap(int *x,int *y)
     *y=t;
 }
 
+struct pos_node** get_positions(int color)
+{
+    if(color == BLACK)
+    {
+        return black_positions;
+    }
+    else
+    {
+        return white_positions;
+    }
+}
+
+struct pos_node* get_same_type(int coin, struct pos_node** positions)
+{
+    return positions[pos_hash(coin)];
+}
+
 void add_position(int coin,int cur_pos,int prev_pos)
 {
     int hash=pos_hash(coin);
     struct pos_node *new,*temp,**positions;
-    if(color(coin)==BLACK)
-    {
-        positions=black_positions;
-    }
-    else
-    {
-        positions=white_positions;
-    }
+    positions = get_positions(color(coin));
     if(positions[hash]==NULL)
     {
         new=(struct pos_node*)malloc(sizeof(struct pos_node));
@@ -149,14 +169,7 @@ void delete_position(int coin,int pos)
 {
     struct pos_node *temp,**positions;
     int hash=pos_hash(coin);
-    if(color(coin)==BLACK)
-    {
-        positions=black_positions;
-    }
-    else
-    {
-        positions=white_positions;
-    }   
+    positions = get_positions(color(coin));   
     temp=positions[hash];
     if(temp!=NULL && positions[hash]->pos==pos)
     {
@@ -1144,8 +1157,9 @@ void promote_pawn(int pos)
     int coin;
     while(1)
     {
-        printf("4.queen,5.knight,7.rook,8.bishop ");
-        scanf("%d",&coin);
+        //printf("4.queen,5.knight,7.rook,8.bishop ");
+        //scanf("%d",&coin);
+        coin = promotion;
         if(coin==QUEEN || coin==KNIGHT || coin==ROOK || coin==BISHOP)
         {
             delete_position(Coin(pos),pos);
@@ -1451,15 +1465,16 @@ void read_or_write_board(char mode)
 
 void start_game()
 {
-    int choice;
+    int choice = 1;
     while(1)
     {
-        printf("\n1.New game 2.continue 3.settings ");
-        scanf("%d",&choice);
+        //printf("\n1.New game 2.continue 3.settings ");
+        //scanf("%d",&choice);
         if(choice==1)
         {
             printf("enter any id(number) for this game ");
-            scanf("%d",&file_id);
+            //scanf("%d",&file_id);
+            file_id = 143341;
             chess_board();
             init_rook_info();
             init_hash_table();
@@ -1549,105 +1564,396 @@ void construct()
     rook();
     bishop();
 }
+//
+void append(struct moves *new)
+{
+    if(front == NULL)
+    {
+        front = rear = new;
+    }
+    else
+    {
+        rear->next = new;
+        rear = rear->next;
+    }
+    rear->next = NULL;
+}
+
+void read_moves()
+{
+    FILE *file = fopen("moves.txt", "r");
+    if(!file)
+    {
+        printf("error opening file\n");
+        exit(1);
+    }
+
+    int color = 1;
+    struct moves *new = (struct moves*)malloc(sizeof(struct moves));
+    while(fscanf(file, "%s", new->notation) != EOF)
+    {
+        if(color == 2)
+        {
+            color = 1;
+        }
+        else
+        {
+            fscanf(file, "%s", new->notation);
+            color = 2;
+        }
+        append(new);
+        new = (struct moves*)malloc(sizeof(struct moves));
+    }
+    fclose(file);
+    free(new);
+}
+
+void print_moves()
+{
+    while(front != NULL)
+    {
+        printf("%s |", front->notation);
+        front = front->next;
+    }
+    printf("\n");
+}
+
+int len(char *arr)
+{
+    int ln = 0;
+    while(arr[ln] != '\0')
+    {
+        ln++;
+    }
+    return ln;
+}
+
+int char_to_coin(char c)
+{
+    if(c == 'K')
+    {
+        return 3;
+    }
+    else if(c == 'Q')
+    {
+        return 4;
+    }
+    else if(c == 'N')
+    {
+        return 5;
+    }
+    else if(c == 'R')
+    {
+        return 7;
+    }
+    else if(c == 'B')
+    {
+        return 8;
+    }
+}
+
+int destination(char *arr)
+{
+    int dest = 0;
+    while(1)
+    {
+        if(arr[top] >= '0' && arr[top] <= '9')
+        {
+            dest = 8 - (arr[top] - '0');
+            dest = dest * 10 + (arr[top-1] - 'a');
+            arr[top--] = '\0';
+            arr[top--] = '\0';
+            return dest;
+        }
+        else if(arr[top] == 'O')
+        {
+            while(top >= 0)
+            {
+                if(arr[top] == 'O')
+                {
+                    dest++;
+                }
+                top--;
+            }
+            return -dest;
+        }
+        else if(arr[top] >= 'A' && arr[top] <= 'Z')
+        {
+            promotion = char_to_coin(arr[top]);
+            arr[top-1] = arr[top] = '\0';
+            top -= 2;
+        }
+        else
+        {
+            arr[top--] = '\0';
+        }
+    }
+}
+
+void strcp(char *src, char *dest)
+{
+    int i;
+    for(i = 0; src[i] != '\0'; i++)
+    {
+        dest[i] = src[i];
+    }
+    dest[i] = '\0';
+}
+
+void convert(char *notation, int color)
+{
+    top = len(notation);
+    top--;
+    //from_pos[0] = from_pos[1] = -1;
+    int from_coin = -1, f_row = -1, f_col = -1;
+    to_pos = destination(notation);
+    if(to_pos == -SHORT_CASTLE)
+    {
+        if(color == BLACK)
+        {
+            from_pos[0] = 4;
+            to_pos = 6;
+        }
+        else
+        {
+            from_pos[0] = 74;
+            to_pos = 76;
+        }
+    }
+    else if(to_pos == -LONG_CASTLE)
+    {
+        if(color == BLACK)
+        {
+            from_pos[0] = 4;
+            to_pos = 2;
+        }
+        else
+        {
+            from_pos[0] = 74;
+            to_pos = 72;
+        }
+    }
+    else 
+    {
+        if(notation[0] >= 'A' && notation[0] <= 'Z')
+        {
+            from_coin = char_to_coin(notation[0]);
+        }
+        else 
+        {
+            from_coin = 6;
+        }
+
+        while(top >= 0)
+        {
+            if(notation[top] >= 'a' && notation[top] <= 'h')
+            {
+                f_col = notation[top] - 'a';
+            }
+            else if(notation[top] >= '0' && notation[top] <= '9')
+            {
+                f_row = 8 - (notation[top] - '0');
+            }
+            top--;
+        }
+
+        struct pos_node *temp = get_same_type(color * 10 + from_coin, get_positions(color));
+
+        if(temp == NULL)
+        {
+            printf("%d coins are missing\n", from_coin);
+            print_moves();
+            exit(0);
+        }
+        else if(f_row != -1)
+        {
+            int i = 0;
+            while (temp != NULL)
+            {
+                if(row(temp->pos) == f_row)
+                {
+                    from_pos[i] = temp->pos;
+                    i++;
+                }
+                temp = temp->next;
+            }
+            from_pos[i] = -1;
+        }
+        else if(f_col != -1)
+        {
+            int i = 0;
+            while (temp != NULL)
+            {
+                if(column(temp->pos) == f_col)
+                {
+                    from_pos[i] = temp->pos;
+                    i++;
+                }
+                temp = temp->next;
+            }
+            from_pos[i] = -1;
+        }
+        else if(from_coin == PAWN)
+        {
+            if(color == BLACK)
+            {
+                from_pos[0] = to_pos + N;
+                from_pos[1] = to_pos + 2 * N;
+            }
+            else
+            {
+                from_pos[0] = to_pos + S;
+                from_pos[1] = to_pos + 2 * S;
+            }
+        }
+        else
+        {
+            int i = 0;
+            while (temp != NULL && i < 2)
+            {
+                from_pos[i] = temp->pos;
+                temp = temp->next;
+                i++;
+            }
+        }
+    }
+}
+
+//
 
 int main()
 {
     start_game();
     display_name_board();
     //display_board();
-    int from,to;
-    while(1)
+    read_moves();
+    struct moves *temp = front;
+    char notation[6];
+    int from, to, fpt = 0;
+    int move_no = 0, wrong_moves = 0, invalid_pos = 0, wrong_color = 0, undone = 0, saved = 0;
+    while(temp != NULL)
     {
-        if(autosave==1)
-        {
-            read_or_write_board('w');
-        }
         if(white_move)
-        {
-            printf("whites move ");
-            scanf("%d %d",&from,&to);
-            if((from==3 && to==3) && undo())
+        {   
+            strcp(temp->notation, notation);
+            convert(notation, WHITE);
+            while(from_pos[fpt] != -1)
             {
-                white_move=0;
-                continue;
-            }
-            else if(from==-2 && to ==-2)
-            {
-                read_or_write_board('w');
-                printf("saved\n");
-                continue;
-            }
-            else if(!is_valid_pos(from) || !is_valid_pos(to))
-            {
-                continue;
-            }
-            else if(color(Coin(from))!=WHITE)
-            {
-                continue;
-            }
-            else if(!move(from,to))
-            {
-                printf("wrong move\n");
-                continue;
-            }
-            else
-            {
-                if(is_game_over(BLACK,black_king_pos))
+                from = from_pos[fpt++];
+                to = to_pos;
+                if((from==3 && to==3) && undo())
                 {
-                    if(autosave==1)
-                    {
-                        read_or_write_board('w');
-                    }
+                    white_move=0;
+                    undone++;
+                    printf("undone\n");
+                    //continue;
+                }
+                else if(from==-2 && to ==-2)
+                {
+                    read_or_write_board('w');
+                    saved++;
+                    printf("saved\n");
+                    //continue;
+                }
+                else if(!is_valid_pos(from) || !is_valid_pos(to))
+                {
+                    printf("not a valid pos\n");
+                    invalid_pos++;
+                    //continue;
+                }
+                else if(color(Coin(from))!=WHITE)
+                {
+                    printf("wrong color\n");
+                    wrong_color++;
+                    //continue;
+                }
+                else if(!move(from,to))
+                {
+                    printf("wrong move %d to %d not %s\n", from, to, temp->notation);
+                    wrong_moves++;
+                    //continue;
+                }
+                else
+                {
+                    fpt = 0;
                     break;
                 }
+                if(fpt == 2)
+                {
+                    printf("move breaked\n");
+                }
             }
+            move_no++;
+            printf("move = %d\n",move_no);
             white_move=0;
+            temp = temp->next;
+            if(is_game_over(BLACK,black_king_pos))
+            {
+                read_or_write_board('w');
+                break;
+            }
         }
         else
         {
-            printf("black move ");
-            scanf("%d %d",&from,&to);
-            if((from==3 && to==3) && undo())
+            strcp(temp->notation, notation);
+            convert(notation, BLACK);
+            while(fpt <= 1)
             {
-                white_move=1;
-                continue;
-            }
-            else if(from==-2 && to ==-2)
-            {
-                read_or_write_board('w');
-                printf("saved\n");
-                continue;
-            }
-            else if(!is_valid_pos(from) || !is_valid_pos(to))
-            {
-                continue;
-            }
-            else if(color(Coin(from))!=BLACK)
-            {
-                continue;
-            }
-            else if(!move(from,to))
-            {
-                printf("wrong move\n");
-                continue;
-            }
-            else
-            {
-                if(is_game_over(WHITE,white_king_pos))
+                from = from_pos[fpt++];
+                to = to_pos;
+                if((from==3 && to==3) && undo())
                 {
-                    if(autosave==1)
-                    {
-                        read_or_write_board('w');
-                    }
+                    printf("undone\n");
+                    undone++;
+                    white_move=1;
+                    continue;
+                }
+                else if(from==-2 && to ==-2)
+                {
+                    read_or_write_board('w');
+                    printf("saved\n");
+                    saved++;
+                    continue;
+                }
+                else if(!is_valid_pos(from) || !is_valid_pos(to))
+                {
+                    printf("not a valid pos\n");
+                    invalid_pos++;
+                    continue;
+                }
+                else if(color(Coin(from))!=BLACK)
+                {
+                    printf("wrong color\n");
+                    wrong_color++;
+                    continue;
+                }
+                else if(!move(from,to))
+                {
+                    printf("wrong move\n");
+                    wrong_moves++;
+                    continue;
+                }
+                else
+                {
+                    fpt = 0;
                     break;
                 }
             }
             white_move=1;
+            temp = temp->next;
+            if(is_game_over(WHITE,white_king_pos))
+            {
+                read_or_write_board('w');
+                break;
+            }
         }
         display_name_board();
+        printf("move from %d, to %d\n", from, to);
         //display_positions();
         //display_board();
     }
+    print_moves();
+    printf("invalid_pos - %d, wrong_color - %d, saved - %d, wrong_moves - %d, undone - %d\n",invalid_pos, wrong_color, saved, wrong_moves, undone);
     destruct();
     return 0;
 }
