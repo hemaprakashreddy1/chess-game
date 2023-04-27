@@ -26,7 +26,7 @@ struct rook_info
 //
 struct moves
 {
-    char notation[5];
+    char notation[6];
     struct moves *next;
 };
 
@@ -180,16 +180,15 @@ void delete_position(int coin,int pos)
     else
     {
         struct pos_node *prev;
-        while(temp!=NULL)
+        while(temp != NULL && temp->pos != pos)
         {
-            if(temp->pos==pos)
-            {
-                prev->next=temp->next;
-                free(temp);
-                break;
-            }
-            prev=temp;
-            temp=temp->next;
+            prev = temp;
+            temp = temp->next;
+        }
+        if(temp != NULL && temp->pos == pos)
+        {
+            prev->next = temp->next;
+            free(temp);
         }
     }
 }
@@ -235,12 +234,10 @@ struct log_node* pop_log()
     {
         return NULL;
     }
-    else
-    {
-        struct log_node *temp=move_log;
-        move_log=move_log->next;
-        return temp;
-    }
+
+    struct log_node *temp = move_log;
+    move_log = move_log->next;
+    return temp;
 }
 
 void push_captured(int color,int coin)
@@ -344,7 +341,7 @@ int is_en_passant(int start,int dest)
 int pawn_move(int start,int dest)
 {
     int clr=color(Coin(start)),steps=row(start)-row(dest);
-    if(clr==WHITE && Coin(dest)==0 && column(start)==column(dest) && steps>0)
+    if(clr==WHITE && Coin(dest)==0 && column(start)==column(dest))
     {
         if(steps==1)
         {
@@ -354,7 +351,6 @@ int pawn_move(int start,int dest)
         {
             return 1;
         }
-        return 0;
     }
     else if(clr==WHITE && steps==1 && column(start)!=column(dest))
     {
@@ -367,8 +363,7 @@ int pawn_move(int start,int dest)
             return is_en_passant(start,dest);
         }
     }
-
-    if(clr==BLACK && Coin(dest)==0 && column(start)==column(dest) && steps<0)
+    else if(clr==BLACK && Coin(dest)==0 && column(start)==column(dest))
     {
         if(steps==-1)
         {
@@ -378,7 +373,6 @@ int pawn_move(int start,int dest)
         {
             return 1;
         }
-        return 0;
     }
     else if(clr==BLACK && steps==-1 && column(start)!=column(dest))
     {
@@ -428,10 +422,7 @@ int steps_limit(int start,int dest)
     {
         return pawn_move(start,dest);
     }
-    else
-    {
-        return 1;
-    }
+    return 1;
 }
 
 int news_path(int start,int dest)
@@ -569,14 +560,11 @@ int validate_move(int start,int dest)
         if(coin_type(Coin(start)) == KING)
         {
             int move_type = steps_limit(start, dest);
-            if(move_type > 1)
+            if(move_type > NORMAL)
             {
                 return move_type;
             }
-            else
-            {
-                return move_type && !is_check_after_move(start, dest, NORMAL);
-            }
+            return move_type && !is_check_after_move(start, dest, NORMAL);
         }
         else if(coin_type(Coin(start)) == PAWN)
         {
@@ -596,7 +584,7 @@ int validate_move(int start,int dest)
         else if(coin_type(Coin(start))==PAWN)
         {
             int move_type=pawn_move(start,dest);
-            if(move_type!=0 && !is_check_after_move(start,dest,move_type))
+            if(move_type && !is_check_after_move(start,dest,move_type))
             {
                 return move_type;
             }
@@ -873,6 +861,24 @@ void en_passant(int start,int dest)
     }
 }
 
+void un_en_passant(struct log_node *temp)
+{
+    if(color(temp->from_coin) == WHITE)
+    {
+        pop_captured(BLACK);
+        add_material(BLACK * 10 + PAWN, -1);
+        add_position(BLACK * 10 + PAWN, temp->to + S, -1);
+        board[row(temp->to + S)][column(temp->to + S)] = BLACK * 10 + PAWN;
+    }
+    else
+    {
+        pop_captured(WHITE);
+        add_material(WHITE * 10 + PAWN, -1);
+        add_position(WHITE * 10 + PAWN, temp->to + N, -1);
+        board[row(temp->to + N)][column(temp->to + N)] = WHITE * 10 + PAWN;
+    }
+}
+
 int rook_hash(int x)
 {
     return x % 4;
@@ -1000,159 +1006,154 @@ void castle(int clr, int castle_type)
     }
 }
 
+void un_castle(struct log_node *temp)
+{
+    if(temp->move_type == SHORT_CASTLE)
+    {
+        if(color(temp->from_coin) == BLACK)
+        {
+            add_position(BLACK * 10 + ROOK, 7, 5);
+            add_rook_info(7, 5, 0, 1);
+            board[0][5] = 0;
+            board[0][7] = BLACK * 10 + ROOK;
+        }
+        else
+        {
+            add_position(WHITE * 10 + ROOK, 77, 75);
+            add_rook_info(77, 75, 0, 1);
+            board[7][5] = 0;
+            board[7][7] = WHITE * 10 + ROOK;
+        }
+    }
+    else if(temp->move_type == LONG_CASTLE)
+    {
+        if(color(temp->from_coin) == BLACK)
+        {
+            add_position(BLACK * 10 + ROOK, 0, 3);
+            add_rook_info(0, 3, 0, 1);
+            board[0][3] = 0;
+            board[0][0] = BLACK * 10 + ROOK;
+        }
+        else
+        {
+            add_position(WHITE * 10 + ROOK, 70, 73);
+            add_rook_info(70, 73, 0, 1);
+            board[7][3] = 0;
+            board[7][0] = WHITE * 10 + ROOK;
+        }
+    }
+}
+
 int move(int start,int dest)
 {
     int move_type = validate_move(start,dest);
-    if(move_type)
+    if(!move_type)
     {
-        push_log(start,Coin(start),dest,Coin(dest),move_type);
-        add_position(Coin(start),dest,start);
-        if(Coin(dest)!=0)
-        {
-            sub_material(Coin(dest), dest);
-            push_captured(color(Coin(dest)),Coin(dest));
-            delete_position(Coin(dest),dest);
-            if(coin_type(Coin(dest)) == ROOK)
-            {
-                add_rook_info(dest, dest, 1, 0);
-            }
-        }
-        else if(move_type == EN_PASSANT)
-        {
-            en_passant(start,dest);
-        }
-        else if(move_type == SHORT_CASTLE || move_type == LONG_CASTLE)
-        {
-            castle(color(Coin(start)), move_type);
-        }
-        board[row(dest)][column(dest)]=Coin(start);
-        board[row(start)][column(start)]=0;
-        if(coin_type(Coin(dest))==PAWN && can_promote_pawn(color(Coin(dest)),dest))
-        {
-            promote_pawn(dest);
-        }
-        else if(Coin(dest)==WHITE*10+KING)
-        {
-            white_king_pos=dest;
-            white_king_moves++;
-        }
-        else if(Coin(dest)==BLACK*10+KING)
-        {
-            black_king_pos=dest;
-            black_king_moves++;
-        }
-        else if(coin_type(Coin(dest)) == ROOK)
-        {
-            add_rook_info(dest, start, 0, 0);
-        }
-        return 1;
+        return 0;
     }
-    return 0;
+
+    push_log(start,Coin(start),dest,Coin(dest),move_type);
+    add_position(Coin(start),dest,start);
+    if(Coin(dest)!=0)
+    {
+        sub_material(Coin(dest), dest);
+        push_captured(color(Coin(dest)),Coin(dest));
+        delete_position(Coin(dest),dest);
+        if(coin_type(Coin(dest)) == ROOK)
+        {
+            add_rook_info(dest, dest, 1, 0);
+        }
+    }
+    else if(move_type == EN_PASSANT)
+    {
+        en_passant(start,dest);
+    }
+    else if(move_type == SHORT_CASTLE || move_type == LONG_CASTLE)
+    {
+        castle(color(Coin(start)), move_type);
+    }
+    board[row(dest)][column(dest)]=Coin(start);
+    board[row(start)][column(start)]=0;
+    if(coin_type(Coin(dest))==PAWN && can_promote_pawn(color(Coin(dest)),dest))
+    {
+        promote_pawn(dest);
+    }
+    else if(Coin(dest)==WHITE*10+KING)
+    {
+        white_king_pos=dest;
+        white_king_moves++;
+    }
+    else if(Coin(dest)==BLACK*10+KING)
+    {
+        black_king_pos=dest;
+        black_king_moves++;
+    }
+    else if(coin_type(Coin(dest)) == ROOK)
+    {
+        add_rook_info(dest, start, 0, 0);
+    }
+    return 1;
 }
 
 int undo()
 {
-    struct log_node *temp=pop_log();
-    if(temp!=NULL)
-    {
-        if(coin_type(temp->from_coin)==PAWN && (row(temp->to)==0 || row(temp->to)==7))
-        {
-            add_position(temp->from_coin,temp->from,-1);
-            delete_position(Coin(temp->to),temp->to);
-            add_material(temp->from_coin, temp->from);
-            sub_material(Coin(temp->to), temp->to);
-        }
-        else
-        {
-            add_position(temp->from_coin,temp->from,temp->to);
-            if(coin_type(temp->from_coin) == ROOK)
-            {
-                add_rook_info(temp->from, temp->to, 0, 1);
-            }
-        }
-
-        if(temp->to_coin != 0)
-        {
-            pop_captured(color(temp->to_coin));
-            add_position(temp->to_coin,temp->to, -1);
-            add_material(temp->to_coin, temp->to);
-            if(coin_type(temp->to_coin) == ROOK)
-            {
-                add_rook_info(temp->to, temp->to, 2, 1);
-            }
-        }
-        else if(temp->move_type == EN_PASSANT)
-        {
-            if(color(temp->from_coin)==WHITE)
-            {
-                pop_captured(BLACK);
-                add_material(BLACK*10+PAWN, -1);
-                add_position(BLACK*10+PAWN,temp->to+S,-1);
-                board[row(temp->to+S)][column(temp->to+S)]=BLACK*10+PAWN; 
-            }
-            else
-            {
-                pop_captured(WHITE);
-                add_material(WHITE*10+PAWN, -1);
-                add_position(WHITE*10+PAWN,temp->to+N,-1);
-                board[row(temp->to+N)][column(temp->to+N)]=WHITE*10+PAWN; 
-            }
-        }
-        else if(temp->move_type == SHORT_CASTLE)
-        {
-            if(color(temp->from_coin) == BLACK)
-            {
-                add_position(BLACK*10+ROOK, 7, 5);
-                add_rook_info(7, 5, 0, 1);
-                board[0][5] = 0;
-                board[0][7] = BLACK*10+ROOK;
-            }
-            else
-            {
-                add_position(WHITE*10+ROOK, 77, 75);
-                add_rook_info(77, 75, 0, 1);
-                board[7][5] = 0;
-                board[7][7] = WHITE*10+ROOK;
-            }
-        }
-        else if(temp->move_type == LONG_CASTLE)
-        {
-            if(color(temp->from_coin) == BLACK)
-            {
-                add_position(BLACK*10+ROOK, 0, 3);
-                add_rook_info(0, 3, 0, 1);
-                board[0][3] = 0;
-                board[0][0] = BLACK*10+ROOK;
-            }
-            else
-            {
-                add_position(WHITE*10+ROOK, 70, 73);
-                add_rook_info(70, 73, 0, 1);
-                board[7][3] = 0;
-                board[7][0] = WHITE*10+ROOK;
-            }
-        }
-        if(temp->from_coin==WHITE*10+KING)
-        {
-            white_king_pos = temp->from;
-            white_king_moves--;
-        }  
-        else if(temp->from_coin==BLACK*10+KING)
-        {
-            black_king_pos = temp->from;
-            black_king_moves--;
-        }
-        board[row(temp->from)][column(temp->from)]=temp->from_coin;
-        board[row(temp->to)][column(temp->to)]=temp->to_coin;   
-        free(temp);
-        display_name_board();
-        //display_board();
-        return 1;
-    }
-    else
+    struct log_node *temp = pop_log();
+    if(!temp)
     {
         return 0;
     }
+
+    if(coin_type(temp->from_coin) == PAWN && (row(temp->to) == 0 || row(temp->to) == 7))
+    {
+        add_position(temp->from_coin, temp->from, -1);
+        delete_position(Coin(temp->to), temp->to);
+        add_material(temp->from_coin, temp->from);
+        sub_material(Coin(temp->to), temp->to);
+    }
+    else
+    {
+        add_position(temp->from_coin, temp->from, temp->to);
+        if(coin_type(temp->from_coin) == ROOK)
+        {
+            add_rook_info(temp->from, temp->to, 0, 1);
+        }
+    }
+
+    if(temp->to_coin != 0)
+    {
+        pop_captured(color(temp->to_coin));
+        add_position(temp->to_coin, temp->to, -1);
+        add_material(temp->to_coin, temp->to);
+        if(coin_type(temp->to_coin) == ROOK)
+        {
+            add_rook_info(temp->to, temp->to, 2, 1);
+        }
+    }
+    else if(temp->move_type == EN_PASSANT)
+    {
+        un_en_passant(temp);
+    }
+    else if(temp->move_type == SHORT_CASTLE || temp->move_type == LONG_CASTLE)
+    {
+        un_castle(temp);
+    }
+
+    if(temp->from_coin == WHITE * 10 + KING)
+    {
+        white_king_pos = temp->from;
+        white_king_moves--;
+    }  
+    else if(temp->from_coin == BLACK * 10 + KING)
+    {
+        black_king_pos = temp->from;
+        black_king_moves--;
+    }
+    board[row(temp->from)][column(temp->from)] = temp->from_coin;
+    board[row(temp->to)][column(temp->to)] = temp->to_coin;   
+    free(temp);
+    display_name_board();
+    //display_board();
+    return 1;
 }
 
 int can_promote_pawn(int color,int pos)
@@ -1471,7 +1472,7 @@ void start_game()
         //scanf("%d",&choice);
         if(choice==1)
         {
-            printf("enter any id(number) for this game ");
+            //printf("enter any id(number) for this game ");
             //scanf("%d",&file_id);
             file_id = 143341;
             chess_board();
@@ -1631,23 +1632,23 @@ int char_to_coin(char c)
 {
     if(c == 'K')
     {
-        return 3;
+        return KING;
     }
     else if(c == 'Q')
     {
-        return 4;
+        return QUEEN;
     }
     else if(c == 'N')
     {
-        return 5;
+        return KNIGHT;
     }
     else if(c == 'R')
     {
-        return 7;
+        return ROOK;
     }
     else if(c == 'B')
     {
-        return 8;
+        return BISHOP;
     }
 }
 
@@ -1823,7 +1824,7 @@ void convert(char *notation, int color)
 int main()
 {
     start_game();
-    display_name_board();
+    //display_name_board();
     //display_board();
     read_moves();
     struct moves *temp = front;
@@ -1856,19 +1857,19 @@ int main()
                 }
                 else if(!is_valid_pos(from) || !is_valid_pos(to))
                 {
-                    printf("not a valid pos\n");
+                    //printf("not a valid pos\n");
                     invalid_pos++;
                     //continue;
                 }
                 else if(color(Coin(from))!=WHITE)
                 {
-                    printf("wrong color\n");
+                    //printf("wrong color\n");
                     wrong_color++;
                     //continue;
                 }
                 else if(!move(from,to))
                 {
-                    printf("wrong move %d to %d not %s\n", from, to, temp->notation);
+                    //printf("wrong move %d to %d not %s\n", from, to, temp->notation);
                     wrong_moves++;
                     //continue;
                 }
@@ -1883,7 +1884,7 @@ int main()
                 }
             }
             move_no++;
-            printf("move = %d\n",move_no);
+            //printf("move = %d\n",move_no);
             white_move=0;
             temp = temp->next;
             if(is_game_over(BLACK,black_king_pos))
@@ -1916,19 +1917,19 @@ int main()
                 }
                 else if(!is_valid_pos(from) || !is_valid_pos(to))
                 {
-                    printf("not a valid pos\n");
+                    //printf("not a valid pos\n");
                     invalid_pos++;
                     continue;
                 }
                 else if(color(Coin(from))!=BLACK)
                 {
-                    printf("wrong color\n");
+                    //printf("wrong color\n");
                     wrong_color++;
                     continue;
                 }
                 else if(!move(from,to))
                 {
-                    printf("wrong move\n");
+                    //printf("wrong move\n");
                     wrong_moves++;
                     continue;
                 }
@@ -1946,12 +1947,13 @@ int main()
                 break;
             }
         }
-        display_name_board();
-        printf("move from %d, to %d\n", from, to);
+        //display_name_board();
+        //printf("move from %d, to %d\n", from, to);
         //display_positions();
         //display_board();
     }
-    print_moves();
+    //print_moves();
+    printf("moves - %d\n", move_no);
     printf("invalid_pos - %d, wrong_color - %d, saved - %d, wrong_moves - %d, undone - %d\n",invalid_pos, wrong_color, saved, wrong_moves, undone);
     destruct();
     return 0;
