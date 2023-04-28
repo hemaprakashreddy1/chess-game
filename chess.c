@@ -70,6 +70,7 @@ int can_promote_pawn();
 void promote_pawn();
 int can_castle();
 void construct();
+void destruct();
 
 int row(int pos)
 {
@@ -1475,7 +1476,8 @@ void start_game()
                 white_move=0;
                 if(is_game_over(BLACK,black_king_pos))
                 {
-                    break;
+                    destruct();
+                    exit(0);
                 }
             }
             else
@@ -1483,7 +1485,8 @@ void start_game()
                 white_move==1;
                 if(is_game_over(WHITE,white_king_pos))
                 {
-                    break;
+                    destruct();
+                    exit(0);
                 }
             }
             break;
