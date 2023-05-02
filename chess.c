@@ -72,7 +72,6 @@ void coin_shape();
 void display_board();
 void num_to_char();
 void chess_board();
-void display_positions();
 int news_path();
 int is_check_after_move();
 int can_promote_pawn();
@@ -80,6 +79,7 @@ void promote_pawn();
 int can_castle();
 void construct();
 void destruct();
+void display_positions();
 
 int row(int pos)
 {
@@ -127,7 +127,7 @@ struct pos_node** get_positions(int color)
     return white_positions;
 }
 
-struct pos_node* get_same_type(int coin, struct pos_node** positions)
+struct pos_node* same_type_positions(int coin, struct pos_node** positions)
 {
     return positions[pos_hash(coin)];
 }
@@ -1450,6 +1450,13 @@ void free_positions(struct pos_node **positions)
 void destruct()
 {
     struct log_node *prev, *temp = move_log;
+    struct moves* f = front, *prev_move;
+    while(f != NULL)
+    {
+        prev_move = f;
+        f = f->next;
+        free(prev_move);
+    }
     while(temp != NULL)
     {
         prev = temp;
@@ -1564,10 +1571,8 @@ int destination(char *arr)
     {
         if(arr[top] >= '0' && arr[top] <= '9')
         {
-            dest = 8 - (arr[top] - '0');
-            dest = dest * 10 + (arr[top-1] - 'a');
-            arr[top--] = '\0';
-            arr[top--] = '\0';
+            dest = 8 - (arr[top--] - '0');
+            dest = dest * 10 + (arr[top--] - 'a');
             return dest;
         }
         else if(arr[top] == 'O')
@@ -1578,40 +1583,28 @@ int destination(char *arr)
                 {
                     dest++;
                 }
-                top--;
+                top -= 2;
             }
             return -dest;
         }
         else if(arr[top] >= 'A' && arr[top] <= 'Z')
         {
             promotion = char_to_coin(arr[top]);
-            arr[top-1] = arr[top] = '\0';
             top -= 2;
         }
         else
         {
-            arr[top--] = '\0';
+            top--;
         }
     }
 }
 
-void strcp(char *src, char *dest)
-{
-    int i;
-    for(i = 0; src[i] != '\0'; i++)
-    {
-        dest[i] = src[i];
-    }
-    dest[i] = '\0';
-}
-
 void convert(char *notation, int color)
 {
-    top = len(notation);
-    top--;
-    //from_pos[0] = from_pos[1] = -1;
+    top = len(notation) - 1;
     int from_coin = -1, f_row = -1, f_col = -1;
     to_pos = destination(notation);
+
     if(to_pos == -SHORT_CASTLE)
     {
         if(color == BLACK)
@@ -1624,6 +1617,7 @@ void convert(char *notation, int color)
             from_pos[0] = 74;
             to_pos = 76;
         }
+        from_pos[1] = -1;
     }
     else if(to_pos == -LONG_CASTLE)
     {
@@ -1637,16 +1631,17 @@ void convert(char *notation, int color)
             from_pos[0] = 74;
             to_pos = 72;
         }
+        from_pos[1] = -1;
     }
-    else 
+    else
     {
         if(notation[0] >= 'A' && notation[0] <= 'Z')
         {
             from_coin = char_to_coin(notation[0]);
         }
-        else 
+        else
         {
-            from_coin = 6;
+            from_coin = PAWN;
         }
 
         while(top >= 0)
@@ -1662,7 +1657,7 @@ void convert(char *notation, int color)
             top--;
         }
 
-        struct pos_node *temp = get_same_type(color * 10 + from_coin, get_positions(color));
+        struct pos_node *temp = same_type_positions(color * 10 + from_coin, get_positions(color));
 
         if(temp == NULL)
         {
@@ -1670,7 +1665,8 @@ void convert(char *notation, int color)
             print_moves();
             exit(0);
         }
-        else if(f_row != -1)
+
+        if(f_row != -1)
         {
             int i = 0;
             while (temp != NULL)
@@ -1710,16 +1706,18 @@ void convert(char *notation, int color)
                 from_pos[0] = to_pos + S;
                 from_pos[1] = to_pos + 2 * S;
             }
+            from_pos[2] = -1;
         }
         else
         {
             int i = 0;
-            while (temp != NULL && i < 2)
+            while (temp != NULL)
             {
                 from_pos[i] = temp->pos;
                 temp = temp->next;
                 i++;
             }
+            from_pos[i] = -1;
         }
     }
 }
@@ -1734,15 +1732,13 @@ int main()
     //display_board();
     read_moves();
     struct moves *temp = front;
-    char notation[6];
     int from, to, fpt = 0;
     int move_no = 0, wrong_moves = 0, invalid_pos = 0, wrong_color = 0, undone = 0, saved = 0;
     while(temp != NULL)
     {
         if(white_move)
         {   
-            strcp(temp->notation, notation);
-            convert(notation, WHITE);
+            convert(temp->notation, WHITE);
             while(from_pos[fpt] != -1)
             {
                 from = from_pos[fpt++];
@@ -1801,8 +1797,7 @@ int main()
         }
         else
         {
-            strcp(temp->notation, notation);
-            convert(notation, BLACK);
+            convert(temp->notation, BLACK);
             while(fpt <= 1)
             {
                 from = from_pos[fpt++];
@@ -1855,7 +1850,10 @@ int main()
         }
         //display_name_board();
         //printf("move from %d, to %d\n", from, to);
-        //display_positions();
+        /*printf("black positions\n");
+        display_positions(black_positions);
+        printf("white positions\n");
+        display_positions(white_positions);*/
         //display_board();
     }
     //print_moves();
@@ -1865,7 +1863,7 @@ int main()
     return 0;
 }
 
-void display_position(struct pos_node **positions)
+void display_positions(struct pos_node **positions)
 {
     struct pos_node*temp;
     for(int i = 0; i < 6; i++)
@@ -1879,14 +1877,6 @@ void display_position(struct pos_node **positions)
         }
         printf("\n");
     }
-}
-
-void display_positions()
-{
-    printf("black positions\n");
-    display_position(black_positions);
-    printf("white positions\n");
-    display_position(white_positions);
 }
 
 void print_empty_row()
