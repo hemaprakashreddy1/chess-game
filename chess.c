@@ -38,6 +38,7 @@ int king_shape[7][7];
 int black_captured[16], white_captured[16], check_path[8], captured_rooks[4], crt = -1, cpt = -1, wct = -1, bct = -1;
 
 int black_king_pos = 04, white_king_pos = 74, autosave = 0, file_id = 0, white_move = 1;
+char file_name[100];
 const int WHITE = 1, BLACK = 2, PAWN = 6, ROOK = 7, BISHOP = 8, KNIGHT = 5, KING = 3, QUEEN = 4;
 int knight_moves[8];
 int white_material = 143, black_material = 143;
@@ -64,7 +65,6 @@ void chess_board();
 void display_positions();
 int news_path();
 int is_check_after_move();
-void read_or_write_board(char mode);
 int can_promote_pawn();
 void promote_pawn();
 int can_castle();
@@ -307,7 +307,7 @@ int can_move_news(int coin)
 
 int is_en_passant(int start, int dest)
 {
-    if(move_log != NULL && coin_type(move_log->from_coin) != PAWN)
+    if(move_log == NULL || coin_type(move_log->from_coin) != PAWN)
     {
         return 0;
     }
@@ -411,35 +411,33 @@ int steps_limit(int start, int dest)
     return 1;
 }
 
+int is_empty_path(int pos, int steps, int direction)
+{
+    for(int i = 1; i < steps; i++)
+    {
+        pos = pos + direction;
+        if(Coin(pos) != 0)
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int news_path(int start, int dest)
 {
     if(start > dest)
     {
         swap(&start, &dest);
     }
+    int steps;
     if(column(start) == column(dest))
     {
-        int j = column(start);
-        for(int i = row(start) + 1; i < row(dest); i++)
-        {
-            if(board[i][j] != 0)
-            {
-                return 0;
-            }
-        }
+        steps = row(dest) - row(start);
+        return is_empty_path(start, steps, S);
     }
-    else if(row(start) == row(dest))
-    {
-        int j = row(start);
-        for(int i = column(start) + 1; i < column(dest); i++)
-        {
-            if(board[j][i] != 0)
-            {
-                return 0;
-            }
-        }
-    }
-    return 1;
+    steps = column(dest) - column(start);
+    return is_empty_path(start, steps, E);
 }
 
 int cross_path(int start, int dest)
@@ -449,31 +447,12 @@ int cross_path(int start, int dest)
         swap(&start, &dest);
     }
     int steps = row(start) - row(dest);
+
     if(column(start) < column(dest))
     {
-        int pos = start;
-        for(int i = 1; i < steps; i++)
-        {
-            pos = pos + NE;
-            if(Coin(pos) != 0)
-            {
-                return 0;
-            }
-        }
+        return is_empty_path(start, steps, NE);
     }
-    else if(column(start) > column(dest))
-    {
-        int pos = start;
-        for(int i = 1; i < steps; i++)
-        {
-            pos = pos + NW;
-            if(Coin(pos) != 0)
-            {
-                return 0;
-            }
-        }
-    }
-    return 1;
+    return is_empty_path(start, steps, NW);
 }
 
 int is_cross_move(int start, int dest)
@@ -514,7 +493,7 @@ int is_knight_move(int start, int dest)
     int *moves = generate_knight_moves(start);
     for(int i = 0; i < 8; i++)
     {
-        if(is_valid_pos(moves[i]) && moves[i] == dest)
+        if(moves[i] == dest && is_valid_pos(moves[i]))
         {
             return 1;
         }
@@ -584,76 +563,61 @@ int validate_move(int start, int dest)
     return 0;
 }
 
+int can_move(int direction, int coin)
+{
+	if(direction == N || direction == E || direction == W || direction == S)
+	{
+		return can_move_news(coin);
+	}
+	return can_move_cross(coin);
+}
+
+int is_check_path(int square, int steps, int direction)
+{
+    int king_color = color(Coin(square)), pos = square;
+    cpt = -1;
+    for(int i = 1; i <= steps; i++)
+    {
+        pos += direction;
+        push_check_path(pos);
+        if(Coin(pos) && color(Coin(pos)) != king_color)
+        {
+            return can_move(direction, Coin(pos)) && steps_limit(pos, square);
+        }
+        else if(Coin(pos))
+        {
+            return 0;
+        }
+    }
+    return 0;
+}
+
 int is_check(int king_color, int square)
 {
-    cpt = -1;
     int x = row(square), y = column(square);
-    for(int i = x - 1; i >= 0; i--)
+    //north
+    int steps = row(square);
+    if(is_check_path(square, steps, N))
     {
-        push_check_path(i * 10 + y);
-        if(color(board[i][y]) == king_color)
-        {
-           break;
-        }
-        else if(board[i][y] != 0 && can_move_news(board[i][y]) && steps_limit(i * 10 + y, square))
-        {
-            return i * 10 + y;
-        }
-        else if(board[i][y] != 0)
-        {
-            break;
-        }
+        return check_path[cpt];
     }
-    cpt = -1;
-    for(int i = square / 10 + 1; i <= 7; i++)
+    //south
+    steps = 7 - row(square);
+    if(is_check_path(square, steps, S))
     {
-        push_check_path(i * 10 + y);
-        if(color(board[i][y]) == king_color)
-        {
-            break;
-        }
-        else if(board[i][y] != 0 && can_move_news(board[i][y]) && steps_limit(i * 10 + y, square))
-        {
-            return i * 10 + y;
-        }
-        else if(board[i][y] != 0)
-        {
-            break;
-        }
+        return check_path[cpt];
     }
-    cpt = -1;
-    for(int i = square % 10 + 1; i <= 7; i++)
+    //East
+    steps = 7 - column(square);
+    if(is_check_path(square, steps, E))
     {
-        push_check_path(x * 10 + i);
-        if(color(board[x][i]) == king_color)
-        {
-            break;
-        }
-        else if(board[x][i] != 0 && can_move_news(board[x][i]) && steps_limit(x * 10 + i, square))
-        {
-            return x * 10 + i;
-        }
-        else if(board[x][i] != 0)
-        {
-            break;
-        }
+        return check_path[cpt];
     }
-    cpt = -1;
-    for(int i = square % 10 - 1; i >= 0; i--)
+    //west
+    steps = column(square);
+    if(is_check_path(square, steps, W))
     {
-        push_check_path(x * 10 + i);
-        if(color(board[x][i]) == king_color)
-        {
-            break;
-        }
-        else if(board[x][i] != 0 && can_move_news(board[x][i]) && steps_limit(x * 10 + i, square))
-        {
-            return x * 10 + i;
-        }
-        else if(board[x][i] != 0)
-        {
-            break;
-        }
+        return check_path[cpt];
     }
     //north west
     int min, max;
@@ -667,48 +631,16 @@ int is_check(int king_color, int square)
         min = y;
         max = x;
     }
-    int pos = square;
-    cpt = -1;
-    for(int i = 0; i < min; i++)
+    if(is_check_path(square, min, NW))
     {
-        pos = pos + NW;
-        push_check_path(pos);
-        if(color(Coin(pos)) == king_color)
-        {
-            break;
-        }
-        else if(Coin(pos) != 0 && can_move_cross(Coin(pos)) && steps_limit(pos, square))
-        {
-            return pos;
-        }
-        else if(Coin(pos) != 0)
-        {
-            break;
-        }
+        return check_path[cpt];
     }
     //south east mv
-    cpt = -1;
-    pos = square;
-    for(int i = 0; i < (7 - max); i++)
+    if(is_check_path(square, 7 - max, SE))
     {
-        pos = pos + SE;
-        push_check_path(pos);
-        if(color(Coin(pos)) == king_color)
-        {
-            break;
-        }
-        else if(Coin(pos) != 0 && can_move_cross(Coin(pos)) && steps_limit(pos, square))
-        {
-            return pos;
-        }
-        else if(Coin(pos) != 0)
-        {
-            break;
-        }
+        return check_path[cpt];
     }
     //north east
-    cpt = -1;
-    int steps;
     if((x + y) < 7)
     {
         steps = x;
@@ -717,26 +649,11 @@ int is_check(int king_color, int square)
     {
         steps = 7 - y;
     }
-    pos = square;
-    for(int i = 0; i < steps; i++)
+    if(is_check_path(square, steps, NE))
     {
-        pos = pos + NE;
-        push_check_path(pos);
-        if(color(Coin(pos)) == king_color)
-        {
-            break;
-        }
-        else if(Coin(pos) != 0 && can_move_cross(Coin(pos)) && steps_limit(pos, square))
-        {
-            return pos;
-        }
-        else if(Coin(pos) != 0)
-        {
-            break;
-        }
+        return check_path[cpt];
     }
     //south west
-    cpt = -1;
     if((x + y) < 7)
     {
         steps = y;
@@ -745,23 +662,9 @@ int is_check(int king_color, int square)
     {
         steps = 7 - x;
     }
-    pos = square;
-    for(int i = 0; i < steps; i++)
+    if(is_check_path(square, steps, SW))
     {
-        pos = pos + SW;
-        push_check_path(pos);
-        if(color(Coin(pos)) == king_color)
-        {
-            break;
-        }
-        else if(Coin(pos) != 0 && can_move_cross(Coin(pos)) && steps_limit(pos, square))
-        {
-            return pos;
-        }
-        else if(Coin(pos) != 0)
-        {
-            break;
-        }
+        return check_path[cpt];
     }
     //knight check
     cpt = -1;
@@ -1331,120 +1234,117 @@ void write_move_log(FILE *file, struct log_node*temp)
         fprintf(file, "%d %d %d %d %d ", temp->from, temp->from_coin, temp->to, temp->to_coin, temp->move_type);
     }
 }
-void read_or_write_board(char mode)
+
+void read_board()
 {
     FILE *file;
-    char file_name[100];
-    sprintf(file_name, "%d.txt", file_id);
-    if(mode == 'w')
+    int pos, coin;
+    file = fopen(file_name, "r");
+    if(file == NULL)
     {
-        file = fopen(file_name, "w");
-        if(file == NULL)
+        printf("error opening the file\n");
+        return;
+    }
+    while(fscanf(file, "%d %d", &pos, &coin) != EOF)
+    {
+        if(pos == -1)
         {
-            printf("error opening the file\n");
-            return;
+            break;
         }
-        for(int i = 0; i < 8; i++)
+        board[row(pos)][column(pos)] = coin;
+    }
+    //reading captured coins
+    while(fscanf(file, "%d ", &coin) != EOF)
+    {
+        if(coin == -1)
         {
-            for(int j = 0; j < 8; j++)
-            {   
-                if(board[i][j] != 0)
-                {
-                    fprintf(file, "%d %d ", i * 10 + j, board[i][j]);
-                }
-            }
+            break;
         }
-        fprintf(file, "%d %d\n", -1, -1);
-        //storing captured coins
-        //white_positions
-        for(int i = 0; i <= wct; i++)
+        push_captured(color(coin), coin);
+    }
+    //reading_move_log
+    int from, from_coin, to, to_coin, mv_type;
+    while(fscanf(file, "%d %d %d %d %d", &from, &from_coin, &to, &to_coin, &mv_type) != EOF)
+    {
+        if(from == -1)
         {
-            fprintf(file, "%d ", white_captured[i]);
+            break;
         }
-        //black_positions
-        for(int i = 0; i <= bct; i++)
+        push_log(from, from_coin, to, to_coin, mv_type);
+    }
+    fscanf(file, "%d %d", &white_king_pos, &black_king_pos);
+    fscanf(file, "%d %d", &white_material, &black_material);
+    for(int i = 0; i < 4; i++)
+    {
+        fscanf(file, "%d %d %d", &rooks[i].cur_pos, &rooks[i].moves, &rooks[i].captured);
+    }
+    int captured_index;
+    while(fscanf(file, "%d ", &captured_index) != EOF)
+    {
+        if(captured_index == -1)
         {
-            fprintf(file, "%d ", black_captured[i]);
+            break;
         }
-        fprintf(file, "%d\n", -1);
+        captured_rooks[++crt] = captured_index;
+    }
+    fscanf(file, "%d %d\n", &white_king_moves, &black_king_moves);
+    if(fclose(file) != 0)
+    {
+        printf("error closing the file\n");
+    }
+}
 
-        write_move_log(file, move_log);
-        fprintf(file, "%d %d %d %d %d\n", -1, -1, -1, -1, -1);
-        fprintf(file, "%d %d\n", white_king_pos, black_king_pos);
-        fprintf(file, "%d %d\n", white_material, black_material);
-        for(int i = 0; i < 4; i++)
-        {
-            fprintf(file, "%d %d %d ", rooks[i].cur_pos, rooks[i].moves, rooks[i].captured);
-        }
-        fprintf(file, "\n");
-        for(int i = 0; i <= crt; i++)
-        {
-            fprintf(file, "%d ", captured_rooks[i]);
-        }
-        fprintf(file, "%d\n", -1);
-        fprintf(file, "%d %d\n", white_king_moves, black_king_moves);
-        if(fclose(file) != 0)
-        {
-            printf("error closing the file\n");
+void write_board()
+{
+    FILE *file;
+    file = fopen(file_name, "w");
+    if(file == NULL)
+    {
+        printf("error opening the file\n");
+        return;
+    }
+    for(int i = 0; i < 8; i++)
+    {
+        for(int j = 0; j < 8; j++)
+        {   
+            if(board[i][j] != 0)
+            {
+                fprintf(file, "%d %d ", i * 10 + j, board[i][j]);
+            }
         }
     }
-    else if(mode == 'r')
+    fprintf(file, "%d %d\n", -1, -1);
+    //storing captured coins
+    //white_positions
+    for(int i = 0; i <= wct; i++)
     {
-        int pos, coin;
-        //file =fopen("chesslog.txt","r");
-        file = fopen(file_name, "r");
-        if(file == NULL)
-        {
-            printf("error opening the file\n");
-            return;
-        }
-        while(fscanf(file, "%d %d", &pos, &coin) != EOF)
-        {
-            if(pos == -1)
-            {
-                break;
-            }
-            board[row(pos)][column(pos)] = coin;
-        }
-        //reading captured coins
-        while(fscanf(file, "%d ", &coin) != EOF)
-        {
-            if(coin == -1)
-            {
-                break;
-            }
-            push_captured(color(coin), coin);
-        }
-        //reading_move_log
-        int from, from_coin, to, to_coin, mv_type;
-        while(fscanf(file, "%d %d %d %d %d", &from, &from_coin, &to, &to_coin, &mv_type) != EOF)
-        {
-            if(from == -1)
-            {
-                break;
-            }
-            push_log(from, from_coin, to, to_coin, mv_type);
-        }
-        fscanf(file, "%d %d", &white_king_pos, &black_king_pos);
-        fscanf(file, "%d %d", &white_material, &black_material);
-        for(int i = 0; i < 4; i++)
-        {
-            fscanf(file, "%d %d %d", &rooks[i].cur_pos, &rooks[i].moves, &rooks[i].captured);
-        }
-        int captured_index;
-        while(fscanf(file, "%d ", &captured_index) != EOF)
-        {
-            if(captured_index == -1)
-            {
-                break;
-            }
-            captured_rooks[++crt] = captured_index;
-        }
-        fscanf(file, "%d %d\n", &white_king_moves, &black_king_moves);
-        if(fclose(file) != 0)
-        {
-            printf("error closing the file\n");
-        }
+        fprintf(file, "%d ", white_captured[i]);
+    }
+    //black_positions
+    for(int i = 0; i <= bct; i++)
+    {
+        fprintf(file, "%d ", black_captured[i]);
+    }
+    fprintf(file, "%d\n", -1);
+
+    write_move_log(file, move_log);
+    fprintf(file, "%d %d %d %d %d\n", -1, -1, -1, -1, -1);
+    fprintf(file, "%d %d\n", white_king_pos, black_king_pos);
+    fprintf(file, "%d %d\n", white_material, black_material);
+    for(int i = 0; i < 4; i++)
+    {
+        fprintf(file, "%d %d %d ", rooks[i].cur_pos, rooks[i].moves, rooks[i].captured);
+    }
+    fprintf(file, "\n");
+    for(int i = 0; i <= crt; i++)
+    {
+        fprintf(file, "%d ", captured_rooks[i]);
+    }
+    fprintf(file, "%d\n", -1);
+    fprintf(file, "%d %d\n", white_king_moves, black_king_moves);
+    if(fclose(file) != 0)
+    {
+        printf("error closing the file\n");
     }
 }
 
@@ -1459,6 +1359,7 @@ void start_game()
         {
             printf("enter any id(number) for this game ");
             scanf("%d", &file_id);
+            sprintf(file_name, "%d.txt", file_id);
             chess_board();
             init_rook_info();
             init_hash_table();
@@ -1468,7 +1369,8 @@ void start_game()
         {
             printf("enter id of previous game ");
             scanf("%d", &file_id);
-            read_or_write_board('r');
+            sprintf(file_name, "%d.txt", file_id);
+            read_board();
             init_hash_table();
             if(move_log != NULL && color(move_log->from_coin) == WHITE)
             {
@@ -1562,7 +1464,7 @@ int main()
     {
         if(autosave == 1)
         {
-            read_or_write_board('w');
+            write_board();
         }
         if(white_move)
         {
@@ -1575,7 +1477,7 @@ int main()
             }
             else if(from == -2 && to == -2)
             {
-                read_or_write_board('w');
+                write_board();
                 printf("saved\n");
                 continue;
             }
@@ -1598,7 +1500,7 @@ int main()
                 {
                     if(autosave == 1)
                     {
-                        read_or_write_board('w');
+                        write_board();
                     }
                     break;
                 }
@@ -1616,7 +1518,7 @@ int main()
             }
             else if(from == -2 && to == -2)
             {
-                read_or_write_board('w');
+                write_board();
                 printf("saved\n");
                 continue;
             }
@@ -1639,7 +1541,7 @@ int main()
                 {
                     if(autosave == 1)
                     {
-                        read_or_write_board('w');
+                        write_board();
                     }
                     break;
                 }
