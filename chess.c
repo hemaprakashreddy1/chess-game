@@ -1209,30 +1209,30 @@ int is_game_over(int color, int king_position)
     int king_can_move = one_king_move(king_position);
     if(black_material + white_material < 10 || (black_material + white_material <= 16 && black_material == white_material))
     {
-        display_name_board();
-        printf("Drawn by insufficient material\n");
+        // display_name_board();
+        // printf("Drawn by insufficient material\n");
         return 1;
     }
     else if(!king_can_move && is_check(color, king_position) != -1)
     {
         if(!is_check_covered(color))
         {
-            display_name_board();
-            if(color == BLACK)
-            {
-                printf("White won by checkmate\n");
-            }
-            else
-            {
-                printf("Black won by checkmate\n");
-            }
+            //display_name_board();
+            // if(color == BLACK)
+            // {
+            //     printf("White won by checkmate\n");
+            // }
+            // else
+            // {
+            //     printf("Black won by checkmate\n");
+            // }
             return 1;
         }
     }
     else if(!king_can_move && !have_one_move(color))
     {
-        display_name_board();
-        printf("Drawn by Stale mate\n");
+        // display_name_board();
+        // printf("Drawn by Stale mate\n");
         return 1;
     }
     return 0;
@@ -1444,6 +1444,7 @@ void free_positions(struct pos_node **positions)
             temp = temp->next;
             free(prev);
         }
+        positions[i] = NULL;
     }
 }
 
@@ -1491,9 +1492,21 @@ void append(struct moves *new)
     rear->next = NULL;
 }
 
-void read_moves()
+int is_end(char *arr)
 {
-    FILE *file = fopen("moves.txt", "r");
+    for(int i = 0; arr[i] != '\0'; i++)
+    {
+        if(arr[i] == '#')
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int read_moves(FILE *file)
+{
+    //FILE *file = fopen("moves.txt", "r");
     if(!file)
     {
         printf("error opening file\n");
@@ -1514,10 +1527,15 @@ void read_moves()
             color = 2;
         }
         append(new);
+        if(is_end(new->notation))
+        {
+            return 1;
+        }
         new = (struct moves*)malloc(sizeof(struct moves));
     }
     fclose(file);
     free(new);
+    return 0;
 }
 
 void print_moves()
@@ -1724,20 +1742,41 @@ void convert(char *notation, int color)
 
 //
 
+void init_new_game()
+{
+    move_log = NULL; //, front = rear = NULL;
+    crt = -1, cpt = -1, wct = -1, bct = -1;
+    white_king_pos = 74, black_king_pos = 4, white_king_moves = 0, black_king_moves = 0;
+    white_material = 143, black_material = 143, white_move = 1;
+
+    for(int i = 0; i <= 7; i++)
+    {
+        for(int j = 0; j <= 7; j++)
+        {
+            board[i][j] = 0;
+        }
+    }
+    chess_board();
+    init_hash_table();
+    init_rook_info();
+}
+
 int main()
 {
+    FILE *file = fopen("checkmated.txt", "r");
     start_game();
     //display_name_board();
     //construct();
     //display_board();
-    read_moves();
+    read_moves(file);
     struct moves *temp = front;
     int from, to, fpt = 0;
     int move_no = 0, wrong_moves = 0, invalid_pos = 0, wrong_color = 0, undone = 0, saved = 0;
+    int white_won = 0, black_won = 0, games = 0;
     while(temp != NULL)
     {
         if(white_move)
-        {   
+        {   fpt = 0;
             convert(temp->notation, WHITE);
             while(from_pos[fpt] != -1)
             {
@@ -1777,13 +1816,12 @@ int main()
                 }
                 else
                 {
-                    fpt = 0;
                     break;
                 }
-                if(fpt == 2)
+                /*if(fpt == 2)
                 {
                     printf("move breaked\n");
-                }
+                }*/
             }
             move_no++;
             //printf("move = %d\n",move_no);
@@ -1792,13 +1830,25 @@ int main()
             if(is_game_over(BLACK, black_king_pos))
             {
                 write_board();
+                white_won++;
+                games++;
+                destruct();
+                //printf("white - %d\nblack - %d\n", white_won, black_won);
+                front = rear = NULL;
+                if(read_moves(file))
+                {
+                    init_new_game();
+                    temp = front;
+                    continue;
+                }
                 break;
             }
         }
         else
         {
+            fpt = 0;
             convert(temp->notation, BLACK);
-            while(fpt <= 1)
+            while(from_pos[fpt] != -1)
             {
                 from = from_pos[fpt++];
                 to = to_pos;
@@ -1836,7 +1886,6 @@ int main()
                 }
                 else
                 {
-                    fpt = 0;
                     break;
                 }
             }
@@ -1845,6 +1894,17 @@ int main()
             if(is_game_over(WHITE, white_king_pos))
             {
                 write_board();
+                black_won++;
+                games++;
+                destruct();
+                //printf("white - %d\nblack - %d\n", white_won, black_won);
+                front = rear = NULL;
+                if(read_moves(file))
+                {
+                    init_new_game();
+                    temp = front;
+                    continue;
+                }
                 break;
             }
         }
@@ -1856,9 +1916,10 @@ int main()
         display_positions(white_positions);*/
         //display_board();
     }
+    printf("white - %d\nblack - %d\ngames - %d\n", white_won, black_won, games);
     //print_moves();
-    printf("moves - %d\n", move_no);
-    printf("invalid_pos - %d, wrong_color - %d, saved - %d, wrong_moves - %d, undone - %d\n", invalid_pos, wrong_color, saved, wrong_moves, undone);
+    //printf("moves - %d\n", move_no);
+    //printf("invalid_pos - %d, wrong_color - %d, saved - %d, wrong_moves - %d, undone - %d\n", invalid_pos, wrong_color, saved, wrong_moves, undone);
     destruct();
     return 0;
 }
