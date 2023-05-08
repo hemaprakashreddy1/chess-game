@@ -1764,6 +1764,11 @@ void init_new_game()
 int main()
 {
     FILE *file = fopen("checkmated.txt", "r");
+    if(!file)
+    {
+        printf("error opening the file\n");
+        return 0;
+    }
     start_game();
     //display_name_board();
     //construct();
@@ -1917,6 +1922,10 @@ int main()
         //display_board();
     }
     printf("white - %d\nblack - %d\ngames - %d\n", white_won, black_won, games);
+    if(fclose(file))
+    {
+        printf("error closing file\n");
+    }
     //print_moves();
     //printf("moves - %d\n", move_no);
     //printf("invalid_pos - %d, wrong_color - %d, saved - %d, wrong_moves - %d, undone - %d\n", invalid_pos, wrong_color, saved, wrong_moves, undone);
