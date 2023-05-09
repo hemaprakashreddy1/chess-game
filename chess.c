@@ -70,6 +70,7 @@ void promote_pawn();
 int can_castle();
 void construct();
 void destruct();
+int is_news_move();
 
 int row(int pos)
 {
@@ -398,7 +399,7 @@ int steps_limit(int start, int dest)
         {
             return 1;
         }
-        else if((column_steps == 2 || column_steps == -2) && king_moves(color(Coin(start))) == 0)
+        else if((column_steps == 2 || column_steps == -2) && king_moves(color(Coin(start))) == 0 && is_news_move(start, dest))
         {
             return can_castle(color(Coin(start)), start, dest);
         }
