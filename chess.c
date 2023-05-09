@@ -31,7 +31,7 @@ struct moves
 };
 
 struct moves *front, *rear;
-int top = 0, promotion = -1, from_pos[6], to_pos;
+int top = 0, promotion = -1, from_pos[9], to_pos;
 //
 struct log_node *move_log;
 struct pos_node *black_positions[6], *white_positions[6];
@@ -1829,10 +1829,6 @@ int main()
                 {
                     break;
                 }
-                /*if(fpt == 2)
-                {
-                    printf("move breaked\n");
-                }*/
             }
             move_no++;
             //printf("move = %d\n",move_no);
