@@ -26,7 +26,7 @@ struct rook_info
 //
 struct moves
 {
-    char notation[6];
+    char notation[7];
     struct moves *next;
 };
 
@@ -80,6 +80,7 @@ int can_castle();
 void construct();
 void destruct();
 void display_positions();
+int is_news_move();
 
 int row(int pos)
 {
@@ -413,7 +414,7 @@ int steps_limit(int start, int dest)
         {
             return 1;
         }
-        else if((column_steps == 2 || column_steps == -2) && king_moves(color(Coin(start))) == 0)
+        else if((column_steps == 2 || column_steps == -2) && king_moves(color(Coin(start))) == 0 && is_news_move(start, dest))
         {
             return can_castle(color(Coin(start)), start, dest);
         }
@@ -1650,7 +1651,7 @@ void convert(char *notation, int color)
             {
                 f_col = notation[top] - 'a';
             }
-            else if(notation[top] >= '0' && notation[top] <= '9')
+            if(notation[top] >= '0' && notation[top] <= '9')
             {
                 f_row = 8 - (notation[top] - '0');
             }
@@ -1666,7 +1667,12 @@ void convert(char *notation, int color)
             exit(0);
         }
 
-        if(f_row != -1)
+        if(f_row != -1 && f_col != -1)
+        {
+            from_pos[0] = f_row * 10 + f_col;
+            from_pos[1] = -1;
+        }
+        else if(f_row != -1)
         {
             int i = 0;
             while (temp != NULL)
@@ -1759,7 +1765,7 @@ int main()
                 }
                 else if(!is_valid_pos(from) || !is_valid_pos(to))
                 {
-                    //printf("not a valid pos\n");
+                    //printf("not a valid from - %d to - %d, notation - %s\n", from, to, temp->notation);
                     invalid_pos++;
                     //continue;
                 }
@@ -1818,7 +1824,7 @@ int main()
                 }
                 else if(!is_valid_pos(from) || !is_valid_pos(to))
                 {
-                    //printf("not a valid pos\n");
+                    //printf("not a valid from - %d to - %d, notation - %s\n", from, to, temp->notation);
                     invalid_pos++;
                     continue;
                 }
@@ -1848,7 +1854,8 @@ int main()
                 break;
             }
         }
-        //display_name_board();
+        // printf("move %d to %d\n", from, to);
+        // display_name_board();
         //printf("move from %d, to %d\n", from, to);
         /*printf("black positions\n");
         display_positions(black_positions);
