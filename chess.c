@@ -1534,7 +1534,6 @@ int read_moves(FILE *file)
         }
         new = (struct moves*)malloc(sizeof(struct moves));
     }
-    fclose(file);
     free(new);
     return 0;
 }
@@ -1750,7 +1749,7 @@ void convert(char *notation, int color)
 
 void init_new_game()
 {
-    move_log = NULL; //, front = rear = NULL;
+    move_log = NULL, front = rear = NULL;
     crt = -1, cpt = -1, wct = -1, bct = -1;
     white_king_pos = 74, black_king_pos = 4, white_king_moves = 0, black_king_moves = 0;
     white_material = 143, black_material = 143, white_move = 1;
@@ -1841,10 +1840,9 @@ int main()
                 games++;
                 destruct();
                 //printf("white - %d\nblack - %d\n", white_won, black_won);
-                front = rear = NULL;
+                init_new_game();
                 if(read_moves(file))
                 {
-                    init_new_game();
                     temp = front;
                     continue;
                 }
@@ -1905,10 +1903,9 @@ int main()
                 games++;
                 destruct();
                 //printf("white - %d\nblack - %d\n", white_won, black_won);
-                front = rear = NULL;
+                init_new_game();
                 if(read_moves(file))
                 {
-                    init_new_game();
                     temp = front;
                     continue;
                 }
