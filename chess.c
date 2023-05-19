@@ -52,7 +52,7 @@ char file_name[100];
 const int WHITE = 1, BLACK = 2, PAWN = 6, ROOK = 7, BISHOP = 8, KNIGHT = 5, KING = 3, QUEEN = 4;
 int knight_moves[8];
 int white_material = 143, black_material = 143;
-const int N = -10, S = 10, E = 1, W = -1, NW = -11, NE = -9, SW = 9, SE=11;
+const int N = -10, S = 10, E = 1, W = -1, NW = -11, NE = -9, SW = 9, SE = 11;
 const int NORMAL = 1, SHORT_CASTLE = 2, LONG_CASTLE = 3, EN_PASSANT = 4;
 int black_king_moves = 0, white_king_moves = 0;
 
@@ -61,26 +61,26 @@ void queen();
 void bishop();
 void print_empty_row();
 void display_name_board();
-void display_captured();
+void display_captured(int *captured, int top);
 void pawn();
 void print_white_space();
 void knight();
 void king();
 void print_line();
-void display_row();
-void coin_shape();
+void display_row(int board[][7], int row, int color);
+void coin_shape(int coin, int row, int color);
 void display_board();
-void num_to_char();
+void num_to_char(int num);
 void chess_board();
-int news_path();
-int is_check_after_move();
-int can_promote_pawn();
-void promote_pawn();
-int can_castle();
+void display_positions();
+int news_path(int start, int dest);
+int is_check_after_move(int start, int dest, int move_type);
+int can_promote_pawn(int color, int pos);
+void promote_pawn(int pos);
+int can_castle(int clr, int start, int dest);
 void construct();
 void destruct();
-void display_positions();
-int is_news_move();
+int is_news_move(int start, int dest);
 
 int row(int pos)
 {
