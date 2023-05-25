@@ -588,14 +588,17 @@ int can_move(int direction, int coin)
 	return can_move_cross(coin);
 }
 
-int is_check_path(int square, int steps, int direction)
+int is_check_path(int square, int steps, int direction, int track_path)
 {
     int king_color = color(Coin(square)), pos = square;
     cpt = -1;
     for(int i = 1; i <= steps; i++)
     {
         pos += direction;
-        push_check_path(pos);
+        if(track_path)
+        {
+            push_check_path(pos);
+        }
         if(Coin(pos) && color(Coin(pos)) != king_color)
         {
             return can_move(direction, Coin(pos)) && steps_limit(pos, square);
@@ -608,30 +611,30 @@ int is_check_path(int square, int steps, int direction)
     return 0;
 }
 
-int is_check(int king_color, int square)
+int is_check(int king_color, int square, int track_path)
 {
     int x = row(square), y = column(square);
     //north
     int steps = row(square);
-    if(is_check_path(square, steps, N))
+    if(is_check_path(square, steps, N, track_path))
     {
         return check_path[cpt];
     }
     //south
     steps = 7 - row(square);
-    if(is_check_path(square, steps, S))
+    if(is_check_path(square, steps, S, track_path))
     {
         return check_path[cpt];
     }
     //East
     steps = 7 - column(square);
-    if(is_check_path(square, steps, E))
+    if(is_check_path(square, steps, E, track_path))
     {
         return check_path[cpt];
     }
     //west
     steps = column(square);
-    if(is_check_path(square, steps, W))
+    if(is_check_path(square, steps, W, track_path))
     {
         return check_path[cpt];
     }
@@ -647,12 +650,12 @@ int is_check(int king_color, int square)
         min = y;
         max = x;
     }
-    if(is_check_path(square, min, NW))
+    if(is_check_path(square, min, NW, track_path))
     {
         return check_path[cpt];
     }
     //south east mv
-    if(is_check_path(square, 7 - max, SE))
+    if(is_check_path(square, 7 - max, SE, track_path))
     {
         return check_path[cpt];
     }
@@ -665,7 +668,7 @@ int is_check(int king_color, int square)
     {
         steps = 7 - y;
     }
-    if(is_check_path(square, steps, NE))
+    if(is_check_path(square, steps, NE, track_path))
     {
         return check_path[cpt];
     }
@@ -678,7 +681,7 @@ int is_check(int king_color, int square)
     {
         steps = 7 - x;
     }
-    if(is_check_path(square, steps, SW))
+    if(is_check_path(square, steps, SW, track_path))
     {
         return check_path[cpt];
     }
@@ -738,7 +741,7 @@ int is_check_after_move(int start, int dest, int move_type)
             board[row(dest + S)][column(dest + S)] = 0;
         }
     }
-    check = is_check(color(start_coin), king_pos);
+    check = is_check(color(start_coin), king_pos, 0);
     board[row(start)][column(start)] = start_coin;
     board[row(dest)][column(dest)] = dest_coin;
     if(move_type == EN_PASSANT)
@@ -840,14 +843,14 @@ int can_castle(int clr, int start, int dest)
     {
         if(steps == -2 && rooks[rook_hash(7)].captured == 0 && rooks[rook_hash(7)].moves == 0 && news_path(start, dest))
         {
-            if(is_check(clr, black_king_pos) == -1 && !is_check_after_move(start, start + E, NORMAL) && !is_check_after_move(start, start + 2 * E, NORMAL))
+            if(is_check(clr, black_king_pos, 0) == -1 && !is_check_after_move(start, start + E, NORMAL) && !is_check_after_move(start, start + 2 * E, NORMAL))
             {
                 return SHORT_CASTLE;
             }
         }
         else if(steps == 2 && rooks[rook_hash(0)].captured == 0 && rooks[rook_hash(0)].moves == 0 && news_path(start, dest + 2 * W))
         {
-            if(is_check(clr, black_king_pos) == -1 && !is_check_after_move(start, start + W, NORMAL) && !is_check_after_move(start, start + 2 * W, NORMAL))
+            if(is_check(clr, black_king_pos, 0) == -1 && !is_check_after_move(start, start + W, NORMAL) && !is_check_after_move(start, start + 2 * W, NORMAL))
             {
                 return LONG_CASTLE;
             }
@@ -857,14 +860,14 @@ int can_castle(int clr, int start, int dest)
     {
         if(steps == -2 && rooks[rook_hash(77)].captured == 0 && rooks[rook_hash(77)].moves == 0 && news_path(start, dest))
         {
-            if(is_check(clr, white_king_pos) == -1 && !is_check_after_move(start, start + E, NORMAL) && !is_check_after_move(start, start + 2 * E, NORMAL))
+            if(is_check(clr, white_king_pos, 0) == -1 && !is_check_after_move(start, start + E, NORMAL) && !is_check_after_move(start, start + 2 * E, NORMAL))
             {
                 return SHORT_CASTLE;
             }
         }
         else if(steps == 2 && rooks[rook_hash(70)].captured == 0 && rooks[rook_hash(70)].moves == 0 && news_path(start, dest + 2 * W))
         {
-            if(is_check(clr, white_king_pos) == -1 && !is_check_after_move(start, start + W, NORMAL) && !is_check_after_move(start, start + 2 * W, NORMAL))
+            if(is_check(clr, white_king_pos, 0) == -1 && !is_check_after_move(start, start + W, NORMAL) && !is_check_after_move(start, start + 2 * W, NORMAL))
             {
                 return LONG_CASTLE;
             }
@@ -1214,7 +1217,7 @@ int is_game_over(int color, int king_position)
         // printf("Drawn by insufficient material\n");
         return 1;
     }
-    else if(!king_can_move && is_check(color, king_position) != -1)
+    else if(!king_can_move && is_check(color, king_position, 1) != -1)
     {
         if(!is_check_covered(color))
         {
