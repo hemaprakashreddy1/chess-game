@@ -23,9 +23,16 @@ struct rook_info
     int captured;
 };
 
+struct move_count_stack
+{
+    int count;
+    struct move_count_stack *next;
+};
+
 struct log_node *move_log;
 struct pos_node *black_positions[6], *white_positions[6];
 struct rook_info rooks[4];
+struct move_count_stack *head;
 
 int board[8][8];
 int pawn_shape[7][7];
@@ -248,6 +255,48 @@ void pop_captured(int color)
     else
     {
         bct--;
+    }
+}
+
+void push_move_count(int reset)
+{
+    if(head == NULL)
+    {
+        struct move_count_stack *new = (struct move_count_stack*)malloc(sizeof(struct move_count_stack));
+        new->count = !reset;
+        new->next = NULL;
+        head = new;
+    }
+    else if(reset)
+    {
+        struct move_count_stack *new = (struct move_count_stack*)malloc(sizeof(struct move_count_stack));
+        new->count = 0;
+        new->next = head;
+        head = new;
+    }
+    else
+    {
+        head->count++;
+    }
+}
+
+int pop_move_count()
+{
+    if(head == NULL)
+    {
+        return 0;
+    }
+    else if(head->count == 0)
+    {
+        struct move_count_stack *temp = head;
+        head = head->next;
+        free(temp);
+        return 1; 
+    }
+    else
+    {
+        head->count--;
+        return 1;
     }
 }
 
@@ -965,6 +1014,16 @@ int move(int start, int dest)
     {
         castle(color(Coin(start)), move_type);
     }
+
+    if(Coin(dest) != 0 || coin_type(Coin(start)) == PAWN)
+    {
+        push_move_count(1);
+    }
+    else
+    {
+        push_move_count(0);
+    }
+
     board[row(dest)][column(dest)] = Coin(start);
     board[row(start)][column(start)] = 0;
     if(coin_type(Coin(dest)) == PAWN && can_promote_pawn(color(Coin(dest)), dest))
@@ -1041,6 +1100,7 @@ int undo()
         black_king_pos = temp->from;
         black_king_moves--;
     }
+    pop_move_count();
     board[row(temp->from)][column(temp->from)] = temp->from_coin;
     board[row(temp->to)][column(temp->to)] = temp->to_coin;   
     free(temp);
@@ -1223,19 +1283,58 @@ int is_game_over(int color, int king_position)
         printf("Drawn by Stale mate\n");
         return 1;
     }
+    else if(head && head->count == 100)
+    {
+        printf("Game drawn by the 50 move rule\n");
+        return 1;
+    }
     return 0;
 }
 
 //storing in a file
-void write_move_log(FILE *file, struct log_node*temp)
+void write_move_log(FILE *file, struct log_node *temp)
 {
     if(temp != NULL)
     {
         write_move_log(file, temp->next);
+        fprintf(file, "%d %d %d %d %d ", temp->from, temp->from_coin, temp->to, temp->to_coin, temp->move_type);
     }
+}
+
+void write_move_count(FILE *file, struct move_count_stack *temp)
+{
     if(temp != NULL)
     {
-        fprintf(file, "%d %d %d %d %d ", temp->from, temp->from_coin, temp->to, temp->to_coin, temp->move_type);
+        write_move_count(file, temp->next);
+        fprintf(file, "%d ", temp->count);
+    }
+
+}
+
+void read_move_count(FILE *file)
+{
+    int count = 0;
+    struct move_count_stack *new;
+    while(fscanf(file, "%d", &count) != EOF)
+    {
+        if(count == -1)
+        {
+            break;
+        }
+        if(head == NULL)
+        {
+            new = (struct move_count_stack*)malloc(sizeof(struct move_count_stack));
+            new->count = count;
+            head = new;
+            head->next = NULL;
+        }
+        else
+        {
+            new = (struct move_count_stack*)malloc(sizeof(struct move_count_stack));
+            new->count = count;
+            new->next = head;
+            head = new;
+        }
     }
 }
 
@@ -1292,6 +1391,7 @@ void read_board()
         captured_rooks[++crt] = captured_index;
     }
     fscanf(file, "%d %d\n", &white_king_moves, &black_king_moves);
+    read_move_count(file);
     if(fclose(file) != 0)
     {
         printf("error closing the file\n");
@@ -1346,6 +1446,8 @@ void write_board()
     }
     fprintf(file, "%d\n", -1);
     fprintf(file, "%d %d\n", white_king_moves, black_king_moves);
+    write_move_count(file, head);
+    fprintf(file, "%d\n", -1);
     if(fclose(file) != 0)
     {
         printf("error closing the file\n");
@@ -1437,11 +1539,18 @@ void free_positions(struct pos_node **positions)
 void destruct()
 {
     struct log_node *prev, *temp = move_log;
+    struct move_count_stack *previous, *current = head;
     while(temp != NULL)
     {
         prev = temp;
         temp = temp->next;
         free(prev);
+    }
+    while(current != NULL)
+    {
+        previous = current;
+        current = current->next;
+        free(previous);
     }
     free_positions(white_positions);
     free_positions(black_positions);
