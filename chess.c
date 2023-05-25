@@ -31,7 +31,7 @@ struct moves
 };
 
 struct moves *front, *rear;
-int top = 0, promotion = -1, from_pos[9], to_pos;
+int top = 0, promotion = -1, from_pos[9], to_pos, total_moves = 0;
 //
 struct log_node *move_log;
 struct pos_node *black_positions[6], *white_positions[6];
@@ -1527,6 +1527,7 @@ int read_moves(FILE *file)
         }
         else
         {
+            total_moves++;
             fscanf(file, "%s", new->notation);
             color = 2;
         }
@@ -1756,6 +1757,7 @@ void init_new_game()
     crt = -1, cpt = -1, wct = -1, bct = -1;
     white_king_pos = 74, black_king_pos = 4, white_king_moves = 0, black_king_moves = 0;
     white_material = 143, black_material = 143, white_move = 1;
+    total_moves = 0;
 
     for(int i = 0; i <= 7; i++)
     {
@@ -1785,7 +1787,7 @@ int main()
     struct moves *temp = front;
     int from, to, fpt = 0;
     int move_no = 0, wrong_moves = 0, invalid_pos = 0, wrong_color = 0, undone = 0, saved = 0;
-    int white_won = 0, black_won = 0, games = 0;
+    int white_won = 0, black_won = 0, games = 0, valid_games = 0;
     while(temp != NULL)
     {
         if(white_move)
@@ -1843,6 +1845,15 @@ int main()
                 games++;
                 destruct();
                 //printf("white - %d\nblack - %d\n", white_won, black_won);
+                if(total_moves == move_no)
+                {
+                    valid_games++;
+                }
+                else
+                {
+                    printf("invalid game - %d\n",games);
+                }
+                move_no = 0;
                 init_new_game();
                 if(read_moves(file))
                 {
@@ -1906,6 +1917,15 @@ int main()
                 games++;
                 destruct();
                 //printf("white - %d\nblack - %d\n", white_won, black_won);
+                if(total_moves == move_no)
+                {
+                    valid_games++;
+                }
+                else
+                {
+                    printf("invalid game - %d\n",games);
+                }
+                move_no = 0;
                 init_new_game();
                 if(read_moves(file))
                 {
