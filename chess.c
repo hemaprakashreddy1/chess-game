@@ -1914,7 +1914,7 @@ void init_new_game()
 
 int main()
 {
-    FILE *file = fopen("fifty_moves.txt", "r");
+    FILE *file = fopen("checkmated.txt", "r");
     if(!file)
     {
         printf("error opening the file\n");
@@ -1947,7 +1947,7 @@ int main()
                 }
                 else if(from == -2 && to == -2)
                 {
-                    write_board();
+                    //write_board();
                     saved++;
                     printf("saved\n");
                     //continue;
@@ -1981,7 +1981,7 @@ int main()
             temp = temp->next;
             if(is_game_over(BLACK, black_king_pos))
             {
-                write_board();
+                //write_board();
                 white_won++;
                 games++;
                 destruct();
@@ -2021,7 +2021,7 @@ int main()
                 }
                 else if(from == -2 && to == -2)
                 {
-                    write_board();
+                    //write_board();
                     printf("saved\n");
                     saved++;
                     continue;
@@ -2053,7 +2053,7 @@ int main()
             temp = temp->next;
             if(is_game_over(WHITE, white_king_pos))
             {
-                write_board();
+                //write_board();
                 black_won++;
                 games++;
                 destruct();
