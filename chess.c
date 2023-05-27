@@ -1153,9 +1153,40 @@ int cover_check(int pos, int color)
     return 0;
 }
 
+int en_passant_cover(int position, int color)
+{
+    if(color == BLACK && is_valid_pos(position + S) && !Coin(position + S))
+    {
+        if(is_valid_pos(position + W) && Coin(position + W) == BLACK * 10 + PAWN)
+        {
+            return pawn_move(position + W, position + S) == EN_PASSANT && !is_check_after_move(position + W, position + S, EN_PASSANT);
+        }
+        else if(is_valid_pos(position + E) && Coin(position + E) == BLACK * 10 + PAWN)
+        {
+            return pawn_move(position + E, position + S) == EN_PASSANT && !is_check_after_move(position + E, position + S, EN_PASSANT);
+        }
+    }
+    else if(color == WHITE && is_valid_pos(position + N) && !Coin(position + N))
+    {
+        if(is_valid_pos(position + W) && Coin(position + W) == WHITE * 10 + PAWN)
+        {
+            return pawn_move(position + W, position + N) == EN_PASSANT && !is_check_after_move(position + W, position + N, EN_PASSANT);
+        }
+        else if(is_valid_pos(position + E) && Coin(position + E) == WHITE * 10 + PAWN)
+        {
+            return pawn_move(position + E, position + N) == EN_PASSANT && !is_check_after_move(position + E, position + N, EN_PASSANT);
+        }
+    }
+    return 0;
+}
+
 int is_check_covered(int color)
 {
     int cover_coin;
+    if(coin_type(Coin(check_path[cpt])) == PAWN && en_passant_cover(check_path[cpt], color))
+    {
+        return PAWN;
+    }
     for(int i = cpt; i >= 0; i--)
     {
         cover_coin = cover_check(check_path[i], color);
