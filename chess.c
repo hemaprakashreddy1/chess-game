@@ -48,7 +48,7 @@ int black_king_pos = 04, white_king_pos = 74, autosave = 0, file_id = 0, white_m
 char file_name[100];
 const int WHITE = 1, BLACK = 2, PAWN = 6, ROOK = 7, BISHOP = 8, KNIGHT = 5, KING = 3, QUEEN = 4;
 int knight_moves[8];
-int white_material = 143, black_material = 143;
+int white_material = 144, black_material = 144, black_square_bishops = 2, white_square_bishops = 2, other_coins = 26;
 const int N = -10, S = 10, E = 1, W = -1, NW = -11, NE = -9, SW = 9, SE = 11;
 const int NORMAL = 1, SHORT_CASTLE = 2, LONG_CASTLE = 3, EN_PASSANT = 4;
 int black_king_moves = 0, white_king_moves = 0;
@@ -300,7 +300,45 @@ int pop_move_count()
     }
 }
 
-int value(int pos, int coin_type)
+void add_coin_count(int coin_type, int pos)
+{
+    if(coin_type == BISHOP)
+    {
+        if((row(pos) + column(pos)) % 2 == 0)
+        {
+            white_square_bishops++;
+        }
+        else
+        {
+            black_square_bishops++;
+        }
+    }
+    else
+    {
+        other_coins++;
+    }
+}
+
+void sub_coin_count(int coin_type, int pos)
+{
+    if(coin_type == BISHOP)
+    {
+        if((row(pos) + column(pos)) % 2 == 0)
+        {
+            white_square_bishops--;
+        }
+        else
+        {
+            black_square_bishops--;
+        }
+    }
+    else
+    {
+        other_coins--;
+    }
+}
+
+int value(int coin_type)
 {
     if(coin_type == QUEEN || coin_type == ROOK || coin_type == PAWN)
     {
@@ -312,36 +350,32 @@ int value(int pos, int coin_type)
     }
     else if(coin_type == BISHOP)
     {
-        if((row(pos) + column(pos)) % 2 == 0)
-        {
-            return 6 + WHITE;
-        }
-        return 6 + BLACK;
+        return 8;
     }
     return 0;
 }
 
-void add_material(int coin, int pos)
+void add_material(int coin)
 {
     if(color(coin) == BLACK)
     {
-        black_material += value(pos, coin_type(coin));
+        black_material += value(coin_type(coin));
     }
     else
     {
-        white_material += value(pos, coin_type(coin));
+        white_material += value(coin_type(coin));
     }
 }
 
-void sub_material(int coin, int pos)
+void sub_material(int coin)
 {
     if(color(coin) == BLACK)
     {
-        black_material -= value(pos, coin_type(coin));
+        black_material -= value(coin_type(coin));
     }
     else
     {
-        white_material -= value(pos, coin_type(coin));
+        white_material -= value(coin_type(coin));
     }
 }
 
@@ -789,14 +823,16 @@ void en_passant(int start, int dest)
 {
     if(color(Coin(start)) == BLACK)
     {
-        sub_material(Coin(dest + N), -1);
+        sub_material(Coin(dest + N));
+        sub_coin_count(PAWN, -1);
         push_captured(color(Coin(dest + N)), Coin(dest + N));
         delete_position(Coin(dest + N), dest + N);
         board[row(dest + N)][column(dest + N)] = 0;
     }
     else
     {
-        sub_material(Coin(dest + S), -1);
+        sub_material(Coin(dest + S));
+        sub_coin_count(PAWN, -1);
         push_captured(color(Coin(dest + S)), Coin(dest + S));
         delete_position(Coin(dest + S), dest + S);
         board[row(dest + S)][column(dest + S)] = 0;
@@ -808,14 +844,16 @@ void un_en_passant(struct log_node *temp)
     if(color(temp->from_coin) == WHITE)
     {
         pop_captured(BLACK);
-        add_material(BLACK * 10 + PAWN, -1);
+        add_material(BLACK * 10 + PAWN);
+        add_coin_count(PAWN, -1);
         add_position(BLACK * 10 + PAWN, temp->to + S, -1);
         board[row(temp->to + S)][column(temp->to + S)] = BLACK * 10 + PAWN;
     }
     else
     {
         pop_captured(WHITE);
-        add_material(WHITE * 10 + PAWN, -1);
+        add_material(WHITE * 10 + PAWN);
+        add_coin_count(PAWN, -1);
         add_position(WHITE * 10 + PAWN, temp->to + N, -1);
         board[row(temp->to + N)][column(temp->to + N)] = WHITE * 10 + PAWN;
     }
@@ -838,7 +876,7 @@ void init_rook_info()
 
 void add_rook_info(int cur_pos, int prev_pos, int captured, int undone)
 {
-    if(captured == 2)
+    if(captured && undone)
     {
         rooks[captured_rooks[crt--]].captured = 0;
     }
@@ -998,7 +1036,8 @@ int move(int start, int dest)
     add_position(Coin(start), dest, start);
     if(Coin(dest) != 0)
     {
-        sub_material(Coin(dest), dest);
+        sub_material(Coin(dest));
+        sub_coin_count(coin_type(Coin(dest)), dest);
         push_captured(color(Coin(dest)), Coin(dest));
         delete_position(Coin(dest), dest);
         if(coin_type(Coin(dest)) == ROOK)
@@ -1059,8 +1098,10 @@ int undo()
     {
         add_position(temp->from_coin, temp->from, -1);
         delete_position(Coin(temp->to), temp->to);
-        add_material(temp->from_coin, temp->from);
-        sub_material(Coin(temp->to), temp->to);
+        add_material(temp->from_coin);
+        add_coin_count(PAWN, -1);
+        sub_material(Coin(temp->to));
+        sub_coin_count(coin_type(Coin(temp->to)), temp->to);
     }
     else
     {
@@ -1075,10 +1116,11 @@ int undo()
     {
         pop_captured(color(temp->to_coin));
         add_position(temp->to_coin, temp->to, -1);
-        add_material(temp->to_coin, temp->to);
+        add_material(temp->to_coin);
+        add_coin_count(coin_type(temp->to_coin), temp->to);
         if(coin_type(temp->to_coin) == ROOK)
         {
-            add_rook_info(temp->to, temp->to, 2, 1);
+            add_rook_info(temp->to, temp->to, 1, 1);
         }
     }
     else if(temp->move_type == EN_PASSANT)
@@ -1124,10 +1166,12 @@ void promote_pawn(int pos)
         if(coin == QUEEN || coin == KNIGHT || coin == ROOK || coin == BISHOP)
         {
             delete_position(Coin(pos), pos);
-            sub_material(Coin(pos), pos);
+            sub_material(Coin(pos));
+            sub_coin_count(PAWN, pos);
             board[row(pos)][column(pos)] = color(Coin(pos)) * 10 + coin;
             add_position(Coin(pos), pos, -1);
-            add_material(Coin(pos), pos);
+            add_material(Coin(pos));
+            add_coin_count(coin, pos);
             break;
         }
     }
@@ -1283,10 +1327,23 @@ int have_one_move(int color)
     return 0;
 }
 
+int is_insufficient_material()
+{
+    if(black_material + white_material < 10)
+    {
+        return 1;
+    }
+    else if(!other_coins && (!white_square_bishops || !black_square_bishops))
+    {
+        return 1;
+    }
+    return 0;
+}
+
 int is_game_over(int color, int king_position)
 {
     int king_can_move = one_king_move(king_position);
-    if(black_material + white_material < 10 || (black_material + white_material <= 16 && black_material == white_material))
+    if(is_insufficient_material())
     {
         display_name_board();
         printf("Drawn by insufficient material\n");
@@ -1422,6 +1479,7 @@ void read_board()
         captured_rooks[++crt] = captured_index;
     }
     fscanf(file, "%d %d\n", &white_king_moves, &black_king_moves);
+    fscanf(file, "%d %d %d\n", &white_square_bishops, &black_square_bishops, &other_coins);
     read_move_count(file);
     if(fclose(file) != 0)
     {
@@ -1477,6 +1535,7 @@ void write_board()
     }
     fprintf(file, "%d\n", -1);
     fprintf(file, "%d %d\n", white_king_moves, black_king_moves);
+    fprintf(file, "%d %d %d\n", white_square_bishops, black_square_bishops, other_coins);
     write_move_count(file, head);
     fprintf(file, "%d\n", -1);
     if(fclose(file) != 0)
