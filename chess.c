@@ -1955,7 +1955,8 @@ void init_new_game()
     move_log = NULL, front = rear = NULL;
     crt = -1, cpt = -1, wct = -1, bct = -1;
     white_king_pos = 74, black_king_pos = 4, white_king_moves = 0, black_king_moves = 0;
-    white_material = 143, black_material = 143, white_move = 1;
+    white_material = 144, black_material = 144, black_square_bishops = 2, white_square_bishops = 2, other_coins = 26;
+    white_move = 1;
     total_moves = 0;
     head = NULL;
 
@@ -1973,7 +1974,7 @@ void init_new_game()
 
 int main()
 {
-    FILE *file = fopen("checkmated.txt", "r");
+    FILE *file = fopen("mating_material_cp.txt", "r");
     if(!file)
     {
         printf("error opening the file\n");
