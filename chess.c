@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+
 struct pos_node
 {
     int pos;
@@ -18,7 +19,7 @@ struct log_node
 
 struct rook_info
 {
-    int cur_pos;
+    int pos;
     int moves;
     int captured;
 };
@@ -33,16 +34,16 @@ struct moves
 struct moves *front, *rear;
 int top = 0, promotion = -1, from_pos[9], to_pos;
 //
-struct move_count_stack
+struct move_count
 {
     int count;
-    struct move_count_stack *next;
+    struct move_count *next;
 };
 
 struct log_node *move_log;
 struct pos_node *black_positions[6], *white_positions[6];
 struct rook_info rooks[4];
-struct move_count_stack *head;
+struct move_count *head;
 
 int board[8][8];
 int pawn_shape[7][7];
@@ -53,7 +54,7 @@ int queen_shape[7][7];
 int king_shape[7][7];
 
 int black_captured[16], white_captured[16], check_path[8], captured_rooks[4], crt = -1, cpt = -1, wct = -1, bct = -1;
-
+const int MAX_CAPTURED_INDEX = 15;
 int black_king_pos = 04, white_king_pos = 74, autosave = 0, file_id = 0, white_move = 1;
 char file_name[100];
 const int WHITE = 1, BLACK = 2, PAWN = 6, ROOK = 7, BISHOP = 8, KNIGHT = 5, KING = 3, QUEEN = 4;
@@ -80,14 +81,18 @@ void display_board();
 void num_to_char(int num);
 void chess_board();
 void display_positions();
-int news_path(int start, int dest);
-int is_check_after_move(int start, int dest, int move_type);
-int can_promote_pawn(int color, int pos);
+int is_news_path_clear(int from, int to);
+int is_check_after_move(int from, int to, int move_type);
+int can_promote_pawn(int pos);
 void promote_pawn(int pos);
-int can_castle(int clr, int start, int dest);
+int can_castle(int color, int from, int to);
 void construct();
 void destruct();
-int is_news_move(int start, int dest);
+int is_news_move(int from, int to);
+void add_rook_info(int current_position, int previous_position, int captured, int undone);
+void un_capture_rook();
+void add_piece(int coin, int position);
+void remove_piece(int to);
 
 int row(int pos)
 {
@@ -140,66 +145,82 @@ struct pos_node* same_type_positions(int coin, struct pos_node** positions)
     return positions[pos_hash(coin)];
 }
 
-void add_position(int coin,int cur_pos, int prev_pos)
+void add_position(int coin, int current_position, int previous_position)
 {
     int hash = pos_hash(coin);
-    struct pos_node *new, *temp, **positions;
+    struct pos_node *new_node, *current_node, **positions;
     positions = get_positions(color(coin));
 
     if(positions[hash] == NULL)
     {
-        new = (struct pos_node*)malloc(sizeof(struct pos_node));
-        new->pos = cur_pos;
-        new->next = NULL;
-        positions[hash] = new;
+        new_node = (struct pos_node*)malloc(sizeof(struct pos_node));
+        if(new_node == NULL)
+        {
+            return;
+        }
+        new_node->pos = current_position;
+        new_node->next = NULL;
+        positions[hash] = new_node;
     }
     else
     {
-        temp = positions[hash];
-        while(temp->pos != prev_pos && temp->next != NULL)
+        current_node = positions[hash];
+        while(current_node->pos != previous_position && current_node->next != NULL)
         {
-            temp = temp->next;
+            current_node = current_node->next;
         }
-        if(temp->pos == prev_pos)
+        if(current_node->pos == previous_position)
         {
-            temp->pos = cur_pos;
+            current_node->pos = current_position;
         }
-        else if(temp->next == NULL)
+        else if(current_node->next == NULL)
         {
-            new = (struct pos_node*)malloc(sizeof(struct pos_node));
-            new->pos = cur_pos;
-            new->next = NULL;
-            temp->next = new;
+            new_node = (struct pos_node*)malloc(sizeof(struct pos_node));
+            if(new_node == NULL)
+            {
+                return;
+            }
+            new_node->pos = current_position;
+            new_node->next = NULL;
+            current_node->next = new_node;
         }
     }
 }
 
 void delete_position(int coin, int pos)
 {
-    struct pos_node *temp, **positions;
+    struct pos_node **positions;
     int hash = pos_hash(coin);
     positions = get_positions(color(coin));
 
-    temp = positions[hash];
-    if(temp != NULL && positions[hash]->pos == pos)
+    if(positions[hash] == NULL)
     {
-        positions[hash] = positions[hash]->next;
-        free(temp);
+        return;
+    }
+
+    struct pos_node *current = positions[hash], *previous = NULL;
+
+    while(current != NULL && current->pos != pos)
+    {
+        previous = current;
+        current = current->next;
+    }
+
+    if(current == NULL)
+    {
+        return;
+    }
+
+    if(previous == NULL)
+    {
+        positions[hash] = current->next;
     }
     else
     {
-        struct pos_node *prev;
-        while(temp != NULL && temp->pos != pos)
-        {
-            prev = temp;
-            temp = temp->next;
-        }
-        if(temp != NULL && temp->pos == pos)
-        {
-            prev->next = temp->next;
-            free(temp);
-        }
+        previous->next = current->next;
     }
+
+    free(current);
 }
 
 void init_hash_table()
@@ -216,25 +237,33 @@ void init_hash_table()
     }
 }
 
-void push_log(int from, int from_coin, int to, int to_coin, int move_type)
+struct log_node* create_log_node(int from, int from_coin, int to, int to_coin, int move_type)
 {
-    struct log_node *new = (struct log_node*)malloc(sizeof(struct log_node));
-    new->from = from;
-    new->to = to;
-    new->from_coin = from_coin;
-    new->to_coin = to_coin;
-    new->move_type = move_type;
+    struct log_node *new_node = (struct log_node*)malloc(sizeof(struct log_node));
 
-    if(move_log == NULL)
+    if(new_node == NULL)
     {
-        move_log = new;
-        move_log->next = NULL;
+        return NULL;
     }
-    else
+    
+    new_node->from = from;
+    new_node->to = to;
+    new_node->from_coin = from_coin;
+    new_node->to_coin = to_coin;
+    new_node->move_type = move_type;
+
+    return new_node;
+}
+
+void push_log(struct log_node **move_log, struct log_node *new_node)
+{
+    if(new_node == NULL)
     {
-        new->next = move_log;
-        move_log = new;
+        return;
     }
+
+    new_node->next = *move_log;
+    *move_log = new_node;
 }
 
 struct log_node* pop_log()
@@ -246,6 +275,8 @@ struct log_node* pop_log()
 
     struct log_node *temp = move_log;
     move_log = move_log->next;
+    temp->next = NULL;
+
     return temp;
 }
 
@@ -253,11 +284,27 @@ void push_captured(int color, int coin)
 {
     if(color == WHITE)
     {
-        white_captured[++wct] = coin;
+        if(wct < MAX_CAPTURED_INDEX)
+        {
+            white_captured[++wct] = coin;
+        }
+        else
+        {
+            printf("captured stack overflow\n");
+            exit(0);
+        }
     }
     else
     {
-        black_captured[++bct] = coin;
+        if(bct < MAX_CAPTURED_INDEX)
+        {
+            black_captured[++bct] = coin;
+        }
+        else
+        {
+            printf("captured stack overflow\n");
+            exit(0);
+        }
     }
 }
 
@@ -265,34 +312,57 @@ void pop_captured(int color)
 {
     if(color == WHITE)
     {
-        wct--;
+        if(wct > -1)
+        {
+            wct--;
+        }
+        else
+        {
+            printf("No white coins captured\n");
+        }
     }
     else
     {
-        bct--;
+        if(bct > -1)
+        {
+            bct--;
+        }
+        else
+        {
+            printf("No black coins captured\n");
+        }
     }
 }
 
-void push_move_count(int reset)
+void add_move_count_node(int count)
+{
+    struct move_count *new_node = (struct move_count*)malloc(sizeof(struct move_count));
+
+    if(new_node == NULL)
+    {
+        return;
+    }
+
+    new_node->count = count;
+    new_node->next = head;
+    head = new_node;
+}
+
+void increment_move_count()
 {
     if(head == NULL)
     {
-        struct move_count_stack *new = (struct move_count_stack*)malloc(sizeof(struct move_count_stack));
-        new->count = !reset;
-        new->next = NULL;
-        head = new;
-    }
-    else if(reset)
-    {
-        struct move_count_stack *new = (struct move_count_stack*)malloc(sizeof(struct move_count_stack));
-        new->count = 0;
-        new->next = head;
-        head = new;
+        add_move_count_node(1);
     }
     else
     {
         head->count++;
     }
+}
+
+void reset_move_count()
+{
+    add_move_count_node(0);
 }
 
 int pop_move_count()
@@ -303,10 +373,10 @@ int pop_move_count()
     }
     else if(head->count == 0)
     {
-        struct move_count_stack *temp = head;
+        struct move_count *temp = head;
         head = head->next;
         free(temp);
-        return 1; 
+        return 1;
     }
     else
     {
@@ -401,84 +471,99 @@ void push_check_path(int pos)
 
 int can_move_news(int coin)
 {
-    return coin_type(coin) != KNIGHT && coin_type(coin) != BISHOP;
+    int type = coin_type(coin);
+    return type != KNIGHT && type != BISHOP;
 }
 
-int is_en_passant(int start, int dest)
+int is_en_passant(int from, int to)
 {
-    if(move_log == NULL || coin_type(move_log->from_coin) != PAWN)
+    int last_move_not_made_by_pawn = move_log == NULL || coin_type(move_log->from_coin) != PAWN;
+    if(last_move_not_made_by_pawn)
     {
         return 0;
     }
     
     int last_mv_steps = row(move_log->from) - row(move_log->to);
-    if(color(Coin(start)) == WHITE && last_mv_steps == -2 && dest + S == move_log->to)
+    int coin_color = color(Coin(from));
+    if(coin_color == WHITE && last_mv_steps == -2 && to + S == move_log->to)
     {
         return EN_PASSANT;
     }
-    else if(color(Coin(start)) == BLACK && last_mv_steps == 2 && dest + N == move_log->to)
+    else if(coin_color == BLACK && last_mv_steps == 2 && to + N == move_log->to)
     {
         return EN_PASSANT;
     }
     return 0;
 }
 
-int pawn_move(int start, int dest)
+int pawn_move(int from, int to)
 {
-    int clr = color(Coin(start)), steps = row(start) - row(dest);
-    if(clr == WHITE && Coin(dest) == 0 && column(start) == column(dest))
+    int clr = color(Coin(from));
+    int steps = row(from) - row(to);
+    int same_column_move = column(from) == column(to);
+    
+    if(clr == WHITE)
     {
-        if(steps == 1)
+        if(same_column_move && Coin(to) == 0)
         {
-            return 1;
+            if(steps == 1)
+            {
+                return 1;
+            }
+            else if(steps == 2)
+            {
+                return row(from) == 6 && is_news_path_clear(from, to);
+            }
         }
-        else if(steps == 2 && row(start) == 6 && news_path(start, dest))
+        else if(steps == 1 && !same_column_move)
         {
-            return 1;
+            if(color(Coin(to)) == BLACK)
+            {
+                return 1;
+            }
+            else if(row(from) == 3)
+            {
+                return is_en_passant(from, to);
+            }
         }
     }
-    else if(clr == WHITE && steps == 1 && column(start) != column(dest))
+    else if(clr == BLACK)
     {
-        if(color(Coin(dest)) == BLACK)
+        if(same_column_move && Coin(to) == 0)
         {
-            return 1;
+            if(steps == -1)
+            {
+                return 1;
+            }
+            else if(steps == -2 && row(from) == 1 && is_news_path_clear(from, to))
+            {
+                return 1;
+            }
         }
-        else if(row(start) == 3)
+        else if(steps == -1 && !same_column_move)
         {
-            return is_en_passant(start, dest);
+            if(color(Coin(to)) == WHITE)
+            {
+                return 1;
+            }
+            else if(row(from) == 4)
+            {
+                return is_en_passant(from, to);
+            }
         }
     }
-    else if(clr == BLACK && Coin(dest) == 0 && column(start) == column(dest))
-    {
-        if(steps == -1)
-        {
-            return 1;
-        }
-        else if(steps == -2 && row(start) == 1 && news_path(start, dest))
-        {
-            return 1;
-        }
-    }
-    else if(clr == BLACK && steps == -1 && column(start) != column(dest))
-    {
-        if(color(Coin(dest)) == WHITE)
-        {
-            return 1;
-        }
-        else if(row(start) == 4)
-        {
-            return is_en_passant(start, dest);
-        }
-    }
+
     return 0;
 }
 
 int is_valid_pos(int pos)
 {
-    return row(pos) >= 0 && row(pos) < 8 && column(pos) < 8 && column(pos) >= 0;
+    int r = row(pos);
+    int c = column(pos);
+    return r >= 0 && r < 8 && c < 8 && c >= 0;
 }
 
-int king_moves(int color)
+int get_king_moves(int color)
 {
     if(color == BLACK)
     {
@@ -487,81 +572,83 @@ int king_moves(int color)
     return white_king_moves;
 }
 
-int steps_limit(int start, int dest)
+int steps_limit(int from, int to)
 {
-    if(coin_type(Coin(start)) == KING)
+    if(coin_type(Coin(from)) == KING)
     {
-        int row_steps = row(start) - row(dest);
-        int column_steps = column(start) - column(dest);
+        int row_steps = row(from) - row(to);
+        int column_steps = column(from) - column(to);
         if(row_steps == 1 || row_steps == -1 || column_steps == 1 || column_steps == -1)
         {
             return 1;
         }
-        else if((column_steps == 2 || column_steps == -2) && king_moves(color(Coin(start))) == 0 && is_news_move(start, dest))
+        else if((column_steps == 2 || column_steps == -2) && get_king_moves(color(Coin(from))) == 0 && is_news_move(from, to))
         {
-            return can_castle(color(Coin(start)), start, dest);
+            return can_castle(color(Coin(from)), from, to);
         }
         return 0;
     }
-    else if(coin_type(Coin(start)) == PAWN)
+    else if(coin_type(Coin(from)) == PAWN)
     {
-        return pawn_move(start, dest);
+        return pawn_move(from, to);
     }
     return 1;
 }
 
-int is_empty_path(int pos, int steps, int direction)
+int is_path_clear(int start_pos, int num_steps, int direction)
 {
-    for(int i = 1; i < steps; i++)
+    int current_position = start_pos;
+    for(int step = 1; step < num_steps; step++)
     {
-        pos = pos + direction;
-        if(Coin(pos) != 0)
+        current_position = current_position + direction;
+        if(Coin(current_position) != 0)
         {
             return 0;
         }
     }
+
     return 1;
 }
 
-int news_path(int start, int dest)
+int is_news_path_clear(int from, int to)
 {
-    if(start > dest)
+    if(from > to)
     {
-        swap(&start, &dest);
+        swap(&from, &to);
     }
+
     int steps;
-    if(column(start) == column(dest))
+    if(column(from) == column(to))
     {
-        steps = row(dest) - row(start);
-        return is_empty_path(start, steps, S);
+        steps = row(to) - row(from);
+        return is_path_clear(from, steps, S);
     }
-    steps = column(dest) - column(start);
-    return is_empty_path(start, steps, E);
+
+    steps = column(to) - column(from);
+    return is_path_clear(from, steps, E);
 }
 
-int cross_path(int start, int dest)
+int is_cross_path_clear(int from, int to)
 {
-    if(start < dest)
+    if(from < to)
     {
-        swap(&start, &dest);
+        swap(&from, &to);
     }
-    int steps = row(start) - row(dest);
+    int steps = row(from) - row(to);
 
-    if(column(start) < column(dest))
+    if(column(from) < column(to))
     {
-        return is_empty_path(start, steps, NE);
+        return is_path_clear(from, steps, NE);
     }
-    return is_empty_path(start, steps, NW);
+    return is_path_clear(from, steps, NW);
 }
 
-int is_cross_move(int start, int dest)
+int is_cross_move(int from, int to)
 {
-    if(start < dest)
-    {
-        swap(&start, &dest);
-    }
-    int steps = row(start) - row(dest);
-    return start + NW * steps == dest || start + NE * steps == dest;
+    int row_steps = row(from) - row(to);
+    int column_steps = column(from) - column(to);
+
+    return row_steps == column_steps || row_steps == -column_steps;
 }
 
 int can_move_cross(int coin)
@@ -584,71 +671,73 @@ int* generate_knight_moves(int pos)
     knight_moves[5] = pos + N + E + E;
     knight_moves[6] = pos + N + W + W;
     knight_moves[7] = pos + S + W + W;
+
     return knight_moves;
 }
 
-int is_knight_move(int start, int dest)
+int is_knight_move(int from, int to)
 {
-    int *moves = generate_knight_moves(start);
+    int *moves = generate_knight_moves(from);
     for(int i = 0; i < 8; i++)
     {
-        if(moves[i] == dest && is_valid_pos(moves[i]))
+        if(moves[i] == to)
         {
             return 1;
         }
     }
+    
     return 0;
 }
 
-int is_news_move(int start, int dest)
+int is_news_move(int from, int to)
 {
-    return row(start) == row(dest) || column(start) == column(dest);
+    return row(from) == row(to) || column(from) == column(to);
 }
 
-int validate_move(int start, int dest)
+int validate_move(int from, int to)
 {
-    if(!is_valid_pos(start) || !is_valid_pos(dest))
+    if(!is_valid_pos(from) || !is_valid_pos(to))
     {
         return 0;
     }
-    else if(color(Coin(start)) == color(Coin(dest)))
+    else if(color(Coin(from)) == color(Coin(to)))
     {
         return 0;
     }
-    else if(is_knight(Coin(start)))
+    else if(is_knight(Coin(from)))
     {
-        return is_knight_move(start, dest) && !is_check_after_move(start, dest, NORMAL);
+        return is_knight_move(from, to) && !is_check_after_move(from, to, NORMAL);
     }
-    else if(can_move_news(Coin(start)) && is_news_move(start, dest))
+    else if(can_move_news(Coin(from)) && is_news_move(from, to))
     {
-        if(coin_type(Coin(start)) == KING)
+        if(coin_type(Coin(from)) == KING)
         {
-            int move_type = steps_limit(start, dest);
+            int move_type = steps_limit(from, to);
             if(move_type > NORMAL)
             {
                 return move_type;
             }
-            return move_type && !is_check_after_move(start, dest, NORMAL);
+            return move_type && !is_check_after_move(from, to, NORMAL);
         }
-        else if(coin_type(Coin(start)) == PAWN)
+        else if(coin_type(Coin(from)) == PAWN)
         {
-            return pawn_move(start, dest) && !is_check_after_move(start, dest, NORMAL);
+            return pawn_move(from, to) && !is_check_after_move(from, to, NORMAL);
         }
         else
         {
-            return news_path(start, dest) && !is_check_after_move(start, dest, NORMAL);
+            return is_news_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
         }
     }
-    else if(can_move_cross(Coin(start)) && is_cross_move(start, dest))
+    else if(can_move_cross(Coin(from)) && is_cross_move(from, to))
     {
-        if(coin_type(Coin(start)) == KING)
+        if(coin_type(Coin(from)) == KING)
         {
-            return steps_limit(start, dest) && !is_check_after_move(start, dest, NORMAL);
+            return steps_limit(from, to) && !is_check_after_move(from, to, NORMAL);
         }
-        else if(coin_type(Coin(start)) == PAWN)
+        else if(coin_type(Coin(from)) == PAWN)
         {
-            int move_type = pawn_move(start, dest);
-            if(move_type && !is_check_after_move(start, dest, move_type))
+            int move_type = pawn_move(from, to);
+            if(move_type && !is_check_after_move(from, to, move_type))
             {
                 return move_type;
             }
@@ -656,7 +745,7 @@ int validate_move(int start, int dest)
         }
         else
         {
-            return cross_path(start, dest) && !is_check_after_move(start, dest, NORMAL);
+            return is_cross_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
         }
     }
     return 0;
@@ -671,100 +760,104 @@ int can_move(int direction, int coin)
 	return can_move_cross(coin);
 }
 
-int is_check_path(int square, int steps, int direction, int track_path)
+int is_check_path(int king_position, int steps, int direction, int track_path)
 {
-    int king_color = color(Coin(square)), pos = square;
+    int king_color = color(Coin(king_position)), current_position = king_position;
     cpt = -1;
+
     for(int i = 1; i <= steps; i++)
     {
-        pos += direction;
+        current_position += direction;
+
         if(track_path)
         {
-            push_check_path(pos);
+            push_check_path(current_position);
         }
-        if(Coin(pos) && color(Coin(pos)) != king_color)
+
+        if(Coin(current_position))
         {
-            return can_move(direction, Coin(pos)) && steps_limit(pos, square);
-        }
-        else if(Coin(pos))
-        {
+            if(color(Coin(current_position)) != king_color)
+            {
+                return can_move(direction, Coin(current_position)) && steps_limit(current_position, king_position);
+            }
             return 0;
         }
     }
+
     return 0;
 }
 
-int is_check(int king_color, int square, int track_path)
+int is_check(int king_color, int king_position, int track_path)
 {
-    int x = row(square), y = column(square);
+    int row_pos = row(king_position), col_pos = column(king_position);
     //north
-    int steps = row(square);
-    if(is_check_path(square, steps, N, track_path))
+    int steps = row_pos;
+    if(is_check_path(king_position, steps, N, track_path))
     {
         return check_path[cpt];
     }
     //south
-    steps = 7 - row(square);
-    if(is_check_path(square, steps, S, track_path))
+    steps = 7 - row_pos;
+    if(is_check_path(king_position, steps, S, track_path))
     {
         return check_path[cpt];
     }
     //East
-    steps = 7 - column(square);
-    if(is_check_path(square, steps, E, track_path))
+    steps = 7 - col_pos;
+    if(is_check_path(king_position, steps, E, track_path))
     {
         return check_path[cpt];
     }
     //west
-    steps = column(square);
-    if(is_check_path(square, steps, W, track_path))
+    steps = col_pos;
+    if(is_check_path(king_position, steps, W, track_path))
     {
         return check_path[cpt];
     }
     //north west
     int min, max;
-    if(x < y)
+    if(row_pos < col_pos)
     {
-        min = x;
-        max = y;
+        min = row_pos;
+        max = col_pos;
     }
     else
     {
-        min = y;
-        max = x;
+        min = col_pos;
+        max = row_pos;
     }
-    if(is_check_path(square, min, NW, track_path))
+    if(is_check_path(king_position, min, NW, track_path))
     {
         return check_path[cpt];
     }
     //south east mv
-    if(is_check_path(square, 7 - max, SE, track_path))
+    if(is_check_path(king_position, 7 - max, SE, track_path))
     {
         return check_path[cpt];
     }
     //north east
-    if((x + y) < 7)
+    if((row_pos + col_pos) < 7)
     {
-        steps = x;
+        steps = row_pos;
     }
     else
     {
-        steps = 7 - y;
+        steps = 7 - col_pos;
     }
-    if(is_check_path(square, steps, NE, track_path))
+    if(is_check_path(king_position, steps, NE, track_path))
     {
         return check_path[cpt];
     }
     //south west
-    if((x + y) < 7)
+    if((row_pos + col_pos) < 7)
     {
-        steps = y;
+        steps = col_pos;
     }
     else
     {
-        steps = 7 - x;
+        steps = 7 - row_pos;
     }
-    if(is_check_path(square, steps, SW, track_path))
+    if(is_check_path(king_position, steps, SW, track_path))
     {
         return check_path[cpt];
     }
@@ -779,7 +872,7 @@ int is_check(int king_color, int square, int track_path)
     {
         op_color = WHITE;
     }
-    int *moves = generate_knight_moves(square);
+    int *moves = generate_knight_moves(king_position);
     for(int i = 0; i < 8; i++)
     {
         if(is_valid_pos(moves[i]) && Coin(moves[i]) == op_color * 10 + KNIGHT)
@@ -788,90 +881,109 @@ int is_check(int king_color, int square, int track_path)
             return check_path[cpt];
         }
     }
+
     return -1;
 }
 
-int is_check_after_move(int start, int dest, int move_type)
+int is_check_after_move(int from, int to, int move_type)
 {
-    int start_coin = Coin(start), dest_coin = Coin(dest), check, king_pos;
+    int start_coin = Coin(from), dest_coin = Coin(to), king_position;
+
     if(coin_type(start_coin) == KING)
     {
-        king_pos = dest;
+        king_position = to;
     }
     else if(color(start_coin) == WHITE)
     {
-        king_pos = white_king_pos;
+        king_position = white_king_pos;
     }
     else
     {
-        king_pos = black_king_pos;
+        king_position = black_king_pos;
     }
-    board[row(dest)][column(dest)] = board[row(start)][column(start)];
-    board[row(start)][column(start)] = 0;
+
+    board[row(to)][column(to)] = board[row(from)][column(from)];
+    board[row(from)][column(from)] = 0;
     int en_pass_pos, en_coin;
+
     if(move_type == EN_PASSANT)
     {
         if(color(start_coin) == BLACK)
         {
-            en_pass_pos = dest + N;
+            en_pass_pos = to + N;
             en_coin = Coin(en_pass_pos);
-            board[row(dest + N)][column(dest + N)] = 0;
+            board[row(to + N)][column(to + N)] = 0;
         }
         else
         {
-            en_pass_pos = dest + S;
+            en_pass_pos = to + S;
             en_coin = Coin(en_pass_pos);
-            board[row(dest + S)][column(dest + S)] = 0;
+            board[row(to + S)][column(to + S)] = 0;
         }
     }
-    check = is_check(color(start_coin), king_pos, 0);
-    board[row(start)][column(start)] = start_coin;
-    board[row(dest)][column(dest)] = dest_coin;
+
+    int check = is_check(color(start_coin), king_position, 0);
+
+    board[row(from)][column(from)] = start_coin;
+    board[row(to)][column(to)] = dest_coin;
+
     if(move_type == EN_PASSANT)
     {
         board[row(en_pass_pos)][column(en_pass_pos)] = en_coin;
     }
+
     return check != -1;
 }
 
-void en_passant(int start, int dest)
+void remove_piece(int to)
 {
-    if(color(Coin(start)) == BLACK)
+    sub_material(Coin(to));
+    sub_coin_count(coin_type(Coin(to)), to);
+    delete_position(Coin(to), to);
+}
+
+void add_piece(int coin, int position)
+{
+    add_position(coin, position, -1);
+    add_material(coin);
+    add_coin_count(coin_type(coin), position);
+}
+
+void en_passant(int from, int to)
+{
+    int captured_pawn_pos;
+
+    if(color(Coin(from)) == BLACK)
     {
-        sub_material(Coin(dest + N));
-        sub_coin_count(PAWN, -1);
-        push_captured(color(Coin(dest + N)), Coin(dest + N));
-        delete_position(Coin(dest + N), dest + N);
-        board[row(dest + N)][column(dest + N)] = 0;
+        captured_pawn_pos = to + N;
     }
     else
     {
-        sub_material(Coin(dest + S));
-        sub_coin_count(PAWN, -1);
-        push_captured(color(Coin(dest + S)), Coin(dest + S));
-        delete_position(Coin(dest + S), dest + S);
-        board[row(dest + S)][column(dest + S)] = 0;
+        captured_pawn_pos = to + S;
     }
+
+    remove_piece(captured_pawn_pos);
+    push_captured(color(Coin(captured_pawn_pos)), Coin(captured_pawn_pos));
+    board[row(captured_pawn_pos)][column(captured_pawn_pos)] = 0;
 }
 
 void un_en_passant(struct log_node *temp)
 {
-    if(color(temp->from_coin) == WHITE)
+    int captured_pawn_pos, coin_color;
+
+    if(color(temp->from_coin) == BLACK)
     {
-        pop_captured(BLACK);
-        add_material(BLACK * 10 + PAWN);
-        add_coin_count(PAWN, -1);
-        add_position(BLACK * 10 + PAWN, temp->to + S, -1);
-        board[row(temp->to + S)][column(temp->to + S)] = BLACK * 10 + PAWN;
+        coin_color = WHITE;
+        captured_pawn_pos = temp->to + N;
     }
     else
-    {
-        pop_captured(WHITE);
-        add_material(WHITE * 10 + PAWN);
-        add_coin_count(PAWN, -1);
-        add_position(WHITE * 10 + PAWN, temp->to + N, -1);
-        board[row(temp->to + N)][column(temp->to + N)] = WHITE * 10 + PAWN;
+    {   coin_color = BLACK;
+        captured_pawn_pos = temp->to + S;
     }
+
+    board[row(captured_pawn_pos)][column(captured_pawn_pos)] = coin_color * 10 + PAWN;
+    add_piece(Coin(captured_pawn_pos), captured_pawn_pos);
+    pop_captured(coin_color);
 }
 
 int rook_hash(int x)
@@ -881,80 +993,79 @@ int rook_hash(int x)
 
 void init_rook_info()
 {
-    rooks[rook_hash(0)].cur_pos = 0;
-    rooks[rook_hash(7)].cur_pos = 7;
-    rooks[rook_hash(70)].cur_pos = 70;
-    rooks[rook_hash(77)].cur_pos = 77;
+    rooks[rook_hash(0)].pos = 0;
+    rooks[rook_hash(7)].pos = 7;
+    rooks[rook_hash(70)].pos = 70;
+    rooks[rook_hash(77)].pos = 77;
     rooks[0].captured = rooks[1].captured = rooks[2].captured = rooks[3].captured = 0;
     rooks[0].moves = rooks[1].moves = rooks[2].moves = rooks[3].moves = 0;
 }
 
-void add_rook_info(int cur_pos, int prev_pos, int captured, int undone)
+void un_capture_rook()
 {
-    if(captured && undone)
+    rooks[captured_rooks[crt--]].captured = 0;
+}
+
+void add_rook_info(int current_position, int previous_position, int captured, int undone)
+{
+    for(int i = 0; i < 4; i++)
     {
-        rooks[captured_rooks[crt--]].captured = 0;
-    }
-    else
-    {
-        for(int i = 0; i < 4; i++)
+        if(rooks[i].pos == previous_position && rooks[i].captured == 0)
         {
-            if(rooks[i].cur_pos == prev_pos && rooks[i].captured == 0)
+            rooks[i].pos = current_position;
+            rooks[i].captured = captured;
+            if(!captured)
             {
-                rooks[i].cur_pos = cur_pos;
-                rooks[i].captured = captured;
-                if(captured == 0)
+                if(undone)
                 {
-                    if(undone)
-                    {
-                        rooks[i].moves--;
-                    }
-                    else
-                    {
-                        rooks[i].moves++;
-                    }
+                    rooks[i].moves--;
                 }
                 else
                 {
-                    captured_rooks[++crt] = i;
+                    rooks[i].moves++;
                 }
             }
+            else
+            {
+                captured_rooks[++crt] = i;
+            }
+            break;
         }
     }
 }
 
-int can_castle(int clr, int start, int dest)
+int can_castle(int color, int from, int to)
 {
-    int steps = column(start) - column(dest);
-    if(clr == BLACK && black_king_moves == 0)
+    int steps = column(from) - column(to);
+    if(color == BLACK && black_king_moves == 0)
     {
-        if(steps == -2 && rooks[rook_hash(7)].captured == 0 && rooks[rook_hash(7)].moves == 0 && news_path(start, dest))
+        if(steps == -2 && rooks[rook_hash(7)].captured == 0 && rooks[rook_hash(7)].moves == 0 && is_news_path_clear(from, to))
         {
-            if(is_check(clr, black_king_pos, 0) == -1 && !is_check_after_move(start, start + E, NORMAL) && !is_check_after_move(start, start + 2 * E, NORMAL))
+            if(is_check(color, black_king_pos, 0) == -1 && !is_check_after_move(from, from + E, NORMAL) && !is_check_after_move(from, from + 2 * E, NORMAL))
             {
                 return SHORT_CASTLE;
             }
         }
-        else if(steps == 2 && rooks[rook_hash(0)].captured == 0 && rooks[rook_hash(0)].moves == 0 && news_path(start, dest + 2 * W))
+        else if(steps == 2 && rooks[rook_hash(0)].captured == 0 && rooks[rook_hash(0)].moves == 0 && is_news_path_clear(from, to + 2 * W))
         {
-            if(is_check(clr, black_king_pos, 0) == -1 && !is_check_after_move(start, start + W, NORMAL) && !is_check_after_move(start, start + 2 * W, NORMAL))
+            if(is_check(color, black_king_pos, 0) == -1 && !is_check_after_move(from, from + W, NORMAL) && !is_check_after_move(from, from + 2 * W, NORMAL))
             {
                 return LONG_CASTLE;
             }
         }
     }
-    else if(clr == WHITE && white_king_moves == 0)
+    else if(color == WHITE && white_king_moves == 0)
     {
-        if(steps == -2 && rooks[rook_hash(77)].captured == 0 && rooks[rook_hash(77)].moves == 0 && news_path(start, dest))
+        if(steps == -2 && rooks[rook_hash(77)].captured == 0 && rooks[rook_hash(77)].moves == 0 && is_news_path_clear(from, to))
         {
-            if(is_check(clr, white_king_pos, 0) == -1 && !is_check_after_move(start, start + E, NORMAL) && !is_check_after_move(start, start + 2 * E, NORMAL))
+            if(is_check(color, white_king_pos, 0) == -1 && !is_check_after_move(from, from + E, NORMAL) && !is_check_after_move(from, from + 2 * E, NORMAL))
             {
                 return SHORT_CASTLE;
             }
         }
-        else if(steps == 2 && rooks[rook_hash(70)].captured == 0 && rooks[rook_hash(70)].moves == 0 && news_path(start, dest + 2 * W))
+        else if(steps == 2 && rooks[rook_hash(70)].captured == 0 && rooks[rook_hash(70)].moves == 0 && is_news_path_clear(from, to + 2 * W))
         {
-            if(is_check(clr, white_king_pos, 0) == -1 && !is_check_after_move(start, start + W, NORMAL) && !is_check_after_move(start, start + 2 * W, NORMAL))
+            if(is_check(color, white_king_pos, 0) == -1 && !is_check_after_move(from, from + W, NORMAL) && !is_check_after_move(from, from + 2 * W, NORMAL))
             {
                 return LONG_CASTLE;
             }
@@ -963,140 +1074,128 @@ int can_castle(int clr, int start, int dest)
     return 0;
 }
 
-void castle(int clr, int castle_type)
+void update_position_and_rook_info(int coin, int from, int to, int undone)
 {
-    if(clr == BLACK)
+    add_position(coin, to, from);
+    add_rook_info(to, from, 0, undone);
+    board[row(from)][column(from)] = 0;
+    board[row(to)][column(to)] = color(coin) * 10 + ROOK;
+}
+
+void castle(int color, int castle_type)
+{
+    if(color == BLACK)
     {
         if(castle_type == SHORT_CASTLE)
         {
-            add_position(Coin(7), 5, 7);
-            add_rook_info(5, 7, 0, 0);
-            board[0][7] = 0;
-            board[0][5] = BLACK * 10 + ROOK;
+            update_position_and_rook_info(Coin(7), 7, 5, 0);
         }
         else
         {
-            add_position(Coin(0), 3, 0);
-            add_rook_info(3, 0, 0, 0);
-            board[0][0] = 0;
-            board[0][3] = BLACK * 10 + ROOK;
+            update_position_and_rook_info(Coin(0), 0, 3, 0);
         }
     }
     else
     {
         if(castle_type == SHORT_CASTLE)
         {
-            add_position(Coin(77), 75, 77);
-            add_rook_info(75, 77, 0, 0);
-            board[7][7] = 0;
-            board[7][5] = WHITE * 10 + ROOK;
+            update_position_and_rook_info(Coin(77), 77, 75, 0);
         }
         else
         {
-            add_position(Coin(70), 73, 70);
-            add_rook_info(73, 70, 0, 0);
-            board[7][0] = 0;
-            board[7][3] = WHITE * 10 + ROOK;
+            update_position_and_rook_info(Coin(70), 70, 73, 0);
         }
     }
 }
 
 void un_castle(struct log_node *temp)
 {
-    if(temp->move_type == SHORT_CASTLE)
+    if(color(temp->from_coin) == BLACK)
     {
-        if(color(temp->from_coin) == BLACK)
+        if(temp->move_type == SHORT_CASTLE)
         {
-            add_position(BLACK * 10 + ROOK, 7, 5);
-            add_rook_info(7, 5, 0, 1);
-            board[0][5] = 0;
-            board[0][7] = BLACK * 10 + ROOK;
+            update_position_and_rook_info(Coin(5), 5, 7, 1);
         }
         else
         {
-            add_position(WHITE * 10 + ROOK, 77, 75);
-            add_rook_info(77, 75, 0, 1);
-            board[7][5] = 0;
-            board[7][7] = WHITE * 10 + ROOK;
+            update_position_and_rook_info(Coin(3), 3, 0, 1);
         }
     }
-    else if(temp->move_type == LONG_CASTLE)
+    else
     {
-        if(color(temp->from_coin) == BLACK)
+        if(temp->move_type == SHORT_CASTLE)
         {
-            add_position(BLACK * 10 + ROOK, 0, 3);
-            add_rook_info(0, 3, 0, 1);
-            board[0][3] = 0;
-            board[0][0] = BLACK * 10 + ROOK;
+            update_position_and_rook_info(Coin(75), 75, 77, 1);
         }
         else
         {
-            add_position(WHITE * 10 + ROOK, 70, 73);
-            add_rook_info(70, 73, 0, 1);
-            board[7][3] = 0;
-            board[7][0] = WHITE * 10 + ROOK;
+            update_position_and_rook_info(Coin(73), 73, 70, 1);
         }
     }
 }
 
-int move(int start, int dest)
+int move(int from, int to)
 {
-    int move_type = validate_move(start, dest);
+    int move_type = validate_move(from, to);
     if(!move_type)
     {
         return 0;
     }
 
-    push_log(start, Coin(start), dest, Coin(dest), move_type);
-    add_position(Coin(start), dest, start);
-    if(Coin(dest) != 0)
+    push_log(&move_log, create_log_node(from, Coin(from), to, Coin(to), move_type));
+    add_position(Coin(from), to, from);
+    
+    if(Coin(to) != 0)
     {
-        sub_material(Coin(dest));
-        sub_coin_count(coin_type(Coin(dest)), dest);
-        push_captured(color(Coin(dest)), Coin(dest));
-        delete_position(Coin(dest), dest);
-        if(coin_type(Coin(dest)) == ROOK)
-        {
-            add_rook_info(dest, dest, 1, 0);
-        }
+        remove_piece(to);
+        push_captured(color(Coin(to)), Coin(to));
     }
     else if(move_type == EN_PASSANT)
     {
-        en_passant(start, dest);
+        en_passant(from, to);
     }
     else if(move_type == SHORT_CASTLE || move_type == LONG_CASTLE)
     {
-        castle(color(Coin(start)), move_type);
+        castle(color(Coin(from)), move_type);
     }
 
-    if(Coin(dest) != 0 || coin_type(Coin(start)) == PAWN)
+    if(Coin(to) != 0 || coin_type(Coin(from)) == PAWN)
     {
-        push_move_count(1);
+        reset_move_count();
     }
     else
     {
-        push_move_count(0);
+        increment_move_count();
     }
 
-    board[row(dest)][column(dest)] = Coin(start);
-    board[row(start)][column(start)] = 0;
-    if(coin_type(Coin(dest)) == PAWN && can_promote_pawn(color(Coin(dest)), dest))
+    if(coin_type(Coin(to)) == ROOK)
     {
-        promote_pawn(dest);
+        add_rook_info(to, to, 1, 0);
     }
-    else if(Coin(dest) == WHITE * 10 + KING)
+
+    board[row(to)][column(to)] = Coin(from);
+    board[row(from)][column(from)] = 0;
+
+    if(coin_type(Coin(to)) == PAWN && can_promote_pawn(to))
     {
-        white_king_pos = dest;
-        white_king_moves++;
+        promote_pawn(to);
     }
-    else if(Coin(dest) == BLACK * 10 + KING)
+    else if(coin_type(Coin(to)) == KING)
     {
-        black_king_pos = dest;
-        black_king_moves++;
+        if(color(Coin(to)) == WHITE)
+        {
+            white_king_pos = to;
+            white_king_moves++;
+        }
+        else
+        {
+            black_king_pos = to;
+            black_king_moves++;
+        }
     }
-    else if(coin_type(Coin(dest)) == ROOK)
+    else if(coin_type(Coin(to)) == ROOK)
     {
-        add_rook_info(dest, start, 0, 0);
+        add_rook_info(to, from, 0, 0);
     }
     return 1;
 }
@@ -1109,34 +1208,38 @@ int undo()
         return 0;
     }
 
-    if(coin_type(temp->from_coin) == PAWN && (row(temp->to) == 0 || row(temp->to) == 7))
+    if(coin_type(temp->from_coin) == PAWN && can_promote_pawn(temp->to))
     {
-        add_position(temp->from_coin, temp->from, -1);
-        delete_position(Coin(temp->to), temp->to);
-        add_material(temp->from_coin);
-        add_coin_count(PAWN, -1);
-        sub_material(Coin(temp->to));
-        sub_coin_count(coin_type(Coin(temp->to)), temp->to);
+        add_piece(temp->from_coin, temp->from);
+        remove_piece(temp->to);
     }
     else
     {
         add_position(temp->from_coin, temp->from, temp->to);
-        if(coin_type(temp->from_coin) == ROOK)
+    }
+
+    if(coin_type(temp->from_coin) == ROOK)
+    {
+        add_rook_info(temp->from, temp->to, 0, 1);
+    }
+    else if(coin_type(temp->from_coin) == KING)
+    {
+        if(color(temp->from_coin) == WHITE)
         {
-            add_rook_info(temp->from, temp->to, 0, 1);
+            white_king_pos = temp->from;
+            white_king_moves--;
+        }
+        else
+        {
+            black_king_pos = temp->from;
+            black_king_moves--;
         }
     }
 
     if(temp->to_coin != 0)
     {
+        add_piece(temp->to_coin, temp->to);
         pop_captured(color(temp->to_coin));
-        add_position(temp->to_coin, temp->to, -1);
-        add_material(temp->to_coin);
-        add_coin_count(coin_type(temp->to_coin), temp->to);
-        if(coin_type(temp->to_coin) == ROOK)
-        {
-            add_rook_info(temp->to, temp->to, 1, 1);
-        }
     }
     else if(temp->move_type == EN_PASSANT)
     {
@@ -1147,47 +1250,36 @@ int undo()
         un_castle(temp);
     }
 
-    if(temp->from_coin == WHITE * 10 + KING)
+    if(coin_type(temp->to_coin) == ROOK)
     {
-        white_king_pos = temp->from;
-        white_king_moves--;
-    }  
-    else if(temp->from_coin == BLACK * 10 + KING)
-    {
-        black_king_pos = temp->from;
-        black_king_moves--;
+        un_capture_rook();
     }
+
     pop_move_count();
     board[row(temp->from)][column(temp->from)] = temp->from_coin;
     board[row(temp->to)][column(temp->to)] = temp->to_coin;   
     free(temp);
-    display_name_board();
-    //display_board();
     return 1;
 }
 
-int can_promote_pawn(int color, int pos)
+int can_promote_pawn(int pos)
 {
-    return (row(pos) == 0 && color == WHITE) || (row(pos) == 7 && color == BLACK);
+    return row(pos) == 0 || row(pos) == 7;
 }
 
 void promote_pawn(int pos)
 {
-    int coin;
+    int coin_type;
     while(1)
     {
         //printf("4.queen, 5.knight, 7.rook, 8.bishop ");
         //scanf("%d", &coin);
-        coin = promotion;
-        if(coin == QUEEN || coin == KNIGHT || coin == ROOK || coin == BISHOP)
+        coin_type = promotion;
+        if(coin_type == QUEEN || coin_type == KNIGHT || coin_type == ROOK || coin_type == BISHOP)
         {
-            delete_position(Coin(pos), pos);
-            sub_material(Coin(pos));
-            sub_coin_count(PAWN, pos);
-            board[row(pos)][column(pos)] = color(Coin(pos)) * 10 + coin;
-            add_position(Coin(pos), pos, -1);
-            add_material(Coin(pos));
-            add_coin_count(coin, pos);
+            remove_piece(pos);
+            board[row(pos)][column(pos)] = color(Coin(pos)) * 10 + coin_type;
+            add_piece(Coin(pos), pos);
             break;
         }
     }
@@ -1195,19 +1287,19 @@ void promote_pawn(int pos)
 
 int cover_check(int pos, int color)
 {
-    struct pos_node **positions, *temp;
+    struct pos_node **positions, *current;
     positions = get_positions(color);
 
     for(int i = 0; i < 6; i++)
     {
-        temp = positions[i];
-        while(temp != NULL)
+        current = positions[i];
+        while(current != NULL)
         {
-            if(coin_type(Coin(temp->pos)) != KING && validate_move(temp->pos, pos))
+            if(coin_type(Coin(current->pos)) != KING && validate_move(current->pos, pos))
             {
-                return Coin(temp->pos);
+                return Coin(current->pos);
             }
-            temp = temp->next;
+            current = current->next;
         }
     }
     return 0;
@@ -1285,9 +1377,9 @@ int one_knight_move(int clr, int pos)
     int *moves = generate_knight_moves(pos);
     for(int i = 0; i < 8; i++)
     {
-        if(is_valid_pos(moves[i]) && color(Coin(moves[i])) != clr)
+        if(is_valid_pos(moves[i]) && color(Coin(moves[i])) != clr && !is_check_after_move(pos, moves[i], NORMAL))
         {
-            return !is_check_after_move(pos, moves[i], NORMAL);
+            return 1;
         }
     }
     return 0;
@@ -1359,6 +1451,7 @@ int is_insufficient_material()
 int is_game_over(int color, int king_position)
 {
     int king_can_move = one_king_move(king_position);
+
     if(is_insufficient_material())
     {
         display_name_board();
@@ -1392,10 +1485,10 @@ int is_game_over(int color, int king_position)
         printf("Game drawn by the 50 move rule\n");
         return 1;
     }
+
     return 0;
 }
 
-//storing in a file
 void write_move_log(FILE *file, struct log_node *temp)
 {
     if(temp != NULL)
@@ -1405,20 +1498,19 @@ void write_move_log(FILE *file, struct log_node *temp)
     }
 }
 
-void write_move_count(FILE *file, struct move_count_stack *temp)
+void write_move_count(FILE *file, struct move_count *temp)
 {
     if(temp != NULL)
     {
         write_move_count(file, temp->next);
         fprintf(file, "%d ", temp->count);
     }
-
 }
 
 void read_move_count(FILE *file)
 {
     int count = 0;
-    struct move_count_stack *new;
+    struct move_count *new_node;
     while(fscanf(file, "%d", &count) != EOF)
     {
         if(count == -1)
@@ -1427,31 +1519,24 @@ void read_move_count(FILE *file)
         }
         if(head == NULL)
         {
-            new = (struct move_count_stack*)malloc(sizeof(struct move_count_stack));
-            new->count = count;
-            head = new;
+            new_node = (struct move_count*)malloc(sizeof(struct move_count));
+            new_node->count = count;
+            head = new_node;
             head->next = NULL;
         }
         else
         {
-            new = (struct move_count_stack*)malloc(sizeof(struct move_count_stack));
-            new->count = count;
-            new->next = head;
-            head = new;
+            new_node = (struct move_count*)malloc(sizeof(struct move_count));
+            new_node->count = count;
+            new_node->next = head;
+            head = new_node;
         }
     }
 }
 
-void read_board()
+void read_board_positions(FILE *file)
 {
-    FILE *file;
     int pos, coin;
-    file = fopen(file_name, "r");
-    if(file == NULL)
-    {
-        printf("error opening the file\n");
-        return;
-    }
     while(fscanf(file, "%d %d", &pos, &coin) != EOF)
     {
         if(pos == -1)
@@ -1460,7 +1545,11 @@ void read_board()
         }
         board[row(pos)][column(pos)] = coin;
     }
-    //reading captured coins
+}
+
+void read_captured_coins(FILE *file)
+{
+    int coin;
     while(fscanf(file, "%d ", &coin) != EOF)
     {
         if(coin == -1)
@@ -1469,7 +1558,10 @@ void read_board()
         }
         push_captured(color(coin), coin);
     }
-    //reading_move_log
+}
+
+void read_move_log(FILE *file)
+{
     int from, from_coin, to, to_coin, mv_type;
     while(fscanf(file, "%d %d %d %d %d", &from, &from_coin, &to, &to_coin, &mv_type) != EOF)
     {
@@ -1477,14 +1569,30 @@ void read_board()
         {
             break;
         }
-        push_log(from, from_coin, to, to_coin, mv_type);
+        push_log(&move_log, create_log_node(from, from_coin, to, to_coin, mv_type));
     }
+}
+
+void read_king_positions(FILE *file)
+{
     fscanf(file, "%d %d", &white_king_pos, &black_king_pos);
+}
+
+void read_material(FILE *file)
+{
     fscanf(file, "%d %d", &white_material, &black_material);
+}
+
+void read_rooks_info(FILE *file)
+{
     for(int i = 0; i < 4; i++)
     {
-        fscanf(file, "%d %d %d", &rooks[i].cur_pos, &rooks[i].moves, &rooks[i].captured);
+        fscanf(file, "%d %d %d", &rooks[i].pos, &rooks[i].moves, &rooks[i].captured);
     }
+}
+
+void read_captured_rooks(FILE *file)
+{
     int captured_index;
     while(fscanf(file, "%d ", &captured_index) != EOF)
     {
@@ -1494,24 +1602,48 @@ void read_board()
         }
         captured_rooks[++crt] = captured_index;
     }
+}
+
+void read_king_moves(FILE *file)
+{
     fscanf(file, "%d %d\n", &white_king_moves, &black_king_moves);
+}
+
+void read_coin_count(FILE *file)
+{
     fscanf(file, "%d %d %d\n", &white_square_bishops, &black_square_bishops, &other_coins);
+}
+
+void read_board()
+{
+    FILE *file;
+
+    file = fopen(file_name, "r");
+    if(file == NULL)
+    {
+        printf("error opening the file\n");
+        return;
+    }
+
+    read_board_positions(file);
+    read_captured_coins(file);
+    read_move_log(file);
+    read_king_positions(file);
+    read_material(file);
+    read_rooks_info(file);
+    read_captured_rooks(file);
+    read_king_moves(file);
+    read_coin_count(file);
     read_move_count(file);
+
     if(fclose(file) != 0)
     {
         printf("error closing the file\n");
     }
 }
 
-void write_board()
+void write_board_positions(FILE *file)
 {
-    FILE *file;
-    file = fopen(file_name, "w");
-    if(file == NULL)
-    {
-        printf("error opening the file\n");
-        return;
-    }
     for(int i = 0; i < 8; i++)
     {
         for(int j = 0; j < 8; j++)
@@ -1523,37 +1655,83 @@ void write_board()
         }
     }
     fprintf(file, "%d %d\n", -1, -1);
-    //storing captured coins
-    //white_positions
+}
+
+void write_captured_coins(FILE *file)
+{
     for(int i = 0; i <= wct; i++)
     {
         fprintf(file, "%d ", white_captured[i]);
     }
-    //black_positions
     for(int i = 0; i <= bct; i++)
     {
         fprintf(file, "%d ", black_captured[i]);
     }
     fprintf(file, "%d\n", -1);
+}
 
-    write_move_log(file, move_log);
-    fprintf(file, "%d %d %d %d %d\n", -1, -1, -1, -1, -1);
+void write_king_positions(FILE *file)
+{
     fprintf(file, "%d %d\n", white_king_pos, black_king_pos);
+}
+
+void write_material(FILE *file)
+{
     fprintf(file, "%d %d\n", white_material, black_material);
+}
+
+void write_rooks_info(FILE *file)
+{
     for(int i = 0; i < 4; i++)
     {
-        fprintf(file, "%d %d %d ", rooks[i].cur_pos, rooks[i].moves, rooks[i].captured);
+        fprintf(file, "%d %d %d ", rooks[i].pos, rooks[i].moves, rooks[i].captured);
     }
     fprintf(file, "\n");
+}
+
+void write_captured_rooks(FILE *file)
+{
     for(int i = 0; i <= crt; i++)
     {
         fprintf(file, "%d ", captured_rooks[i]);
     }
     fprintf(file, "%d\n", -1);
+}
+
+void write_king_moves(FILE *file)
+{
     fprintf(file, "%d %d\n", white_king_moves, black_king_moves);
+}
+
+void write_coin_count(FILE *file)
+{
     fprintf(file, "%d %d %d\n", white_square_bishops, black_square_bishops, other_coins);
+}
+
+void write_board()
+{
+    FILE *file;
+
+    file = fopen(file_name, "w");
+    if(file == NULL)
+    {
+        printf("error opening the file\n");
+        return;
+    }
+
+    write_board_positions(file);
+    write_captured_coins(file);
+    write_move_log(file, move_log);
+    fprintf(file, "%d %d %d %d %d\n", -1, -1, -1, -1, -1);
+    write_king_positions(file);
+    write_material(file);
+    write_rooks_info(file);
+    write_captured_rooks(file);
+    write_king_moves(file);
+    write_coin_count(file);
     write_move_count(file, head);
     fprintf(file, "%d\n", -1);
+
     if(fclose(file) != 0)
     {
         printf("error closing the file\n");
@@ -1630,44 +1808,62 @@ void start_game()
 
 void free_positions(struct pos_node **positions)
 {
-    struct pos_node *prev, *temp;
-    for(int i = 0; i <= 7; i++)
+    struct pos_node *previous, *current;
+    for(int i = 0; i < 8; i++)
     {
-        temp = positions[i];
-        while(temp != NULL)
+        current = positions[i];
+        while(current != NULL)
         {
-            prev = temp;
-            temp = temp->next;
-            free(prev);
+            previous = current;
+            current = current->next;
+            free(previous);
         }
+        positions[i] = NULL;
+    }
+}
+
+void free_log_nodes(struct log_node *head)
+{
+    struct log_node *temp;
+    while(head != NULL)
+    {
+        temp = head;
+        head = head->next;
+        free(temp);
+    }
+}
+
+void free_move_count(struct move_count *head)
+{
+    struct move_count *previous;
+    while(head != NULL)
+    {
+        previous = head;
+        head = head->next;
+        free(previous);
+    }
+}
+
+void free_moves(struct moves *front)
+{
+    struct moves *previous;
+    while(front != NULL)
+    {
+        previous = front;
+        front = front->next;
+        free(previous);
     }
 }
 
 void destruct()
 {
-    struct log_node *prev, *temp = move_log;
-    struct moves* f = front, *prev_move;
-    while(f != NULL)
-    {
-        prev_move = f;
-        f = f->next;
-        free(prev_move);
-    }
-    while(temp != NULL)
-    {
-        prev = temp;
-        temp = temp->next;
-        free(prev);
-    }
-    struct move_count_stack *previous, *current = head;
-    while(current != NULL)
-    {
-        previous = current;
-        current = current->next;
-        free(previous);
-    }
+    free_moves(front);
+    free_log_nodes(move_log);
+    free_move_count(head);
     free_positions(white_positions);
     free_positions(black_positions);
+
+    move_log = NULL, head = NULL, front = NULL, rear = NULL;
 }
 
 void construct()
@@ -2070,15 +2266,15 @@ int main()
 
 void display_positions(struct pos_node **positions)
 {
-    struct pos_node*temp;
+    struct pos_node *current;
     for(int i = 0; i < 6; i++)
     {
-        temp = positions[i];
+        current = positions[i];
         printf("%d --", i);
-        while(temp != NULL)
+        while(current != NULL)
         {
-            printf("<%d,%d> ", temp->pos, Coin(temp->pos));
-            temp = temp->next;
+            printf("<%d,%d> ", current->pos, Coin(current->pos));
+            current = current->next;
         }
         printf("\n");
     }
