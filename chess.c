@@ -1435,14 +1435,8 @@ int is_insufficient_material()
 int is_game_over(int color, int king_position)
 {
     int king_can_move = one_king_move(king_position);
-
-    if(is_insufficient_material())
-    {
-        display_name_board();
-        printf("Drawn by insufficient material\n");
-        return 1;
-    }
-    else if(!king_can_move && is_check(color, king_position, 1) != -1)
+    
+    if(!king_can_move && is_check(color, king_position, 1) != -1)
     {
         if(!is_check_covered(color))
         {
@@ -1469,7 +1463,12 @@ int is_game_over(int color, int king_position)
         printf("Game drawn by the 50 move rule\n");
         return 1;
     }
-
+    else if(is_insufficient_material())
+    {
+        display_name_board();
+        printf("Drawn by insufficient material\n");
+        return 1;
+    }
     return 0;
 }
 
