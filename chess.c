@@ -63,6 +63,8 @@ const int N = -10, S = 10, E = 1, W = -1, NW = -11, NE = -9, SW = 9, SE = 11;
 const int NORMAL = 1, SHORT_CASTLE = 2, LONG_CASTLE = 3, EN_PASSANT = 4;
 int black_king_moves = 0, white_king_moves = 0;
 
+int check_mates = 0, stalemates = 0, insufficient_material = 0, fifty_move_games = 0;
+
 void rook();
 void queen();
 void bishop();
@@ -1359,13 +1361,7 @@ int is_insufficient_material()
 int is_game_over(int color, int king_position)
 {
     int king_can_move = one_king_move(king_position);
-    if(is_insufficient_material())
-    {
-        // display_name_board();
-        // printf("Drawn by insufficient material\n");
-        return 1;
-    }
-    else if(!king_can_move && is_check(color, king_position, 1) != -1)
+    if(!king_can_move && is_check(color, king_position, 1) != -1)
     {
         if(!is_check_covered(color))
         {
@@ -1378,6 +1374,7 @@ int is_game_over(int color, int king_position)
             // {
             //     printf("Black won by checkmate\n");
             // }
+            check_mates++;
             return 1;
         }
     }
@@ -1385,11 +1382,20 @@ int is_game_over(int color, int king_position)
     {
         // display_name_board();
         // printf("Drawn by Stale mate\n");
+        stalemates++;
         return 1;
     }
     else if(head && head->count == 100)
     {
         //printf("Game drawn by the 50 move rule\n");
+        fifty_move_games++;
+        return 1;
+    }
+    else if(is_insufficient_material())
+    {
+        // display_name_board();
+        // printf("Drawn by insufficient material\n");
+        insufficient_material++;
         return 1;
     }
     return 0;
@@ -1974,16 +1980,13 @@ void init_new_game()
 
 int main()
 {
-    FILE *file = fopen("mating_material_cp.txt", "r");
+    FILE *file = fopen("checkmated_20k.txt", "r");
     if(!file)
     {
         printf("error opening the file\n");
         return 0;
     }
     start_game();
-    //display_name_board();
-    //construct();
-    //display_board();
     read_moves(file);
     struct moves *temp = front;
     int from, to, fpt = 0;
@@ -2136,16 +2139,9 @@ int main()
                 break;
             }
         }
-        // printf("move %d to %d\n", from, to);
-        // display_name_board();
-        //printf("move from %d, to %d\n", from, to);
-        /*printf("black positions\n");
-        display_positions(black_positions);
-        printf("white positions\n");
-        display_positions(white_positions);*/
-        //display_board();
     }
-    printf("white - %d\nblack - %d\ngames - %d\n", white_won, black_won, games);
+    printf("white - %d\nblack - %d\ngames - %d\nvalid games - %d\n", white_won, black_won, games, valid_games);
+    printf("checkmates - %d\nstalemates - %d\ninsufficient material - %d\nfifty move rule - %d\n", check_mates, stalemates, insufficient_material, fifty_move_games);
     if(fclose(file))
     {
         printf("error closing file\n");
