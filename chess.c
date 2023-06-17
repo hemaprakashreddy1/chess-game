@@ -2172,9 +2172,10 @@ void init_new_game()
     init_rook_info();
 }
 
-int main()
+int main(int argc, char **argv)
 {
-    FILE *file = fopen("checkmated_20k.txt", "r");
+    char *file_name = argv[1];
+    FILE *file = fopen(file_name, "r");
     if(!file)
     {
         printf("error opening the file\n");
