@@ -367,23 +367,21 @@ void reset_move_count()
     add_move_count_node(0);
 }
 
-int pop_move_count()
+void pop_move_count()
 {
     if(head == NULL)
     {
-        return 0;
+        return;
     }
     else if(head->count == 0)
     {
         struct move_count *temp = head;
         head = head->next;
         free(temp);
-        return 1;
     }
     else
     {
         head->count--;
-        return 1;
     }
 }
 
@@ -498,59 +496,61 @@ int is_en_passant(int from, int to)
     return 0;
 }
 
-int pawn_move(int from, int to)
+int validate_pawn_move(int from, int to)
 {
-    int clr = color(Coin(from));
-    int steps = row(from) - row(to);
-    int same_column_move = column(from) == column(to);
+    int from_coin_color = color(Coin(from));
+    int to_coin = Coin(to);
+    int row_steps = row(from) - row(to);
+    int column_steps = column(from) - column(to);
+    int straight_move = column_steps == 0;
     
-    if(clr == WHITE)
+    if(from_coin_color == WHITE)
     {
-        if(same_column_move && Coin(to) == 0)
+        if(straight_move && to_coin == 0)
         {
-            if(steps == 1)
+            if(row_steps == 1)
             {
-                return 1;
+                return !is_check_after_move(from, to, NORMAL);
             }
-            else if(steps == 2)
+            else if(row_steps == 2 && row(from) == 6 && is_news_path_clear(from, to))
             {
-                return row(from) == 6 && is_news_path_clear(from, to);
+                return !is_check_after_move(from, to, NORMAL);
             }
         }
-        else if(steps == 1 && !same_column_move)
+        else if(row_steps == 1 && (column_steps == 1 || column_steps == -1))
         {
-            if(color(Coin(to)) == BLACK)
+            if(to_coin != 0)
             {
-                return 1;
+                return !is_check_after_move(from, to, NORMAL);
             }
-            else if(row(from) == 3)
+            else if(row(from) == 3 && is_en_passant(from, to) && !is_check_after_move(from, to, EN_PASSANT))
             {
-                return is_en_passant(from, to);
+                return EN_PASSANT;
             }
         }
     }
-    else if(clr == BLACK)
+    else
     {
-        if(same_column_move && Coin(to) == 0)
+        if(straight_move && to_coin == 0)
         {
-            if(steps == -1)
+            if(row_steps == -1)
             {
-                return 1;
+                return !is_check_after_move(from, to, NORMAL);
             }
-            else if(steps == -2 && row(from) == 1 && is_news_path_clear(from, to))
+            else if(row_steps == -2 && row(from) == 1 && is_news_path_clear(from, to))
             {
-                return 1;
+                return !is_check_after_move(from, to, NORMAL);
             }
         }
-        else if(steps == -1 && !same_column_move)
+        else if(row_steps == -1 && (column_steps == 1 || column_steps == -1))
         {
-            if(color(Coin(to)) == WHITE)
+            if(to_coin != 0)
             {
-                return 1;
+                return !is_check_after_move(from, to, NORMAL);
             }
-            else if(row(from) == 4)
+            else if(row(from) == 4 && is_en_passant(from, to) && !is_check_after_move(from, to, EN_PASSANT))
             {
-                return is_en_passant(from, to);
+                return EN_PASSANT;
             }
         }
     }
@@ -574,41 +574,60 @@ int get_king_moves(int color)
     return white_king_moves;
 }
 
-int steps_limit(int from, int to)
+int validate_king_move(int from, int to)
 {
-    if(coin_type(Coin(from)) == KING)
+    int row_steps = row(from) - row(to);
+    int column_steps = column(from) - column(to);
+    int news_move = row_steps == 0 || column_steps == 0;
+    int cross_move = row_steps == column_steps || row_steps == -column_steps;
+
+    if(!(news_move || cross_move))
     {
-        int row_steps = row(from) - row(to);
-        int column_steps = column(from) - column(to);
-        if(row_steps == 1 || row_steps == -1 || column_steps == 1 || column_steps == -1)
-        {
-            return 1;
-        }
-        else if((column_steps == 2 || column_steps == -2) && get_king_moves(color(Coin(from))) == 0 && is_news_move(from, to))
-        {
-            return can_castle(color(Coin(from)), from, to);
-        }
         return 0;
     }
-    else if(coin_type(Coin(from)) == PAWN)
+
+    if(row_steps == 1 || row_steps == -1 || column_steps == 1 || column_steps == -1)
     {
-        return pawn_move(from, to);
+        return !is_check_after_move(from, to, NORMAL);
+    }
+    else if(row_steps == 0 && (column_steps == 2 || column_steps == -2) && get_king_moves(color(Coin(from))) == 0)
+    {
+        return can_castle(color(Coin(from)), from, to);
+    }
+    return 0;
+}
+
+int steps_limit(int from, int to)
+{
+    int from_coin_color = color(Coin(from));
+    int from_coin_type = coin_type(Coin(from));
+    int row_steps = row(from) - row(to);
+    int column_steps = column(from) - column(to);
+
+    if(from_coin_type == KING)
+    {
+        return row_steps == 1 || row_steps == -1 || column_steps == 1 || column_steps == -1;
+    }
+    else if(from_coin_type == PAWN)
+    {
+        if(from_coin_color == WHITE)
+        {
+            return row_steps == 1 && column_steps && color(Coin(to)) == BLACK;
+        }
+        return row_steps == -1 && column_steps && color(Coin(to)) == WHITE;
     }
     return 1;
 }
 
-int is_path_clear(int start_pos, int num_steps, int direction)
+int is_path_clear(int from, int to, int direction)
 {
-    int current_position = start_pos;
-    for(int step = 1; step < num_steps; step++)
+    for(int current_position = from + direction; current_position < to; current_position += direction)
     {
-        current_position = current_position + direction;
-        if(Coin(current_position) != 0)
+        if(Coin(current_position))
         {
             return 0;
         }
     }
-
     return 1;
 }
 
@@ -619,30 +638,25 @@ int is_news_path_clear(int from, int to)
         swap(&from, &to);
     }
 
-    int steps;
     if(column(from) == column(to))
     {
-        steps = row(to) - row(from);
-        return is_path_clear(from, steps, S);
+        return is_path_clear(from, to, S);
     }
-
-    steps = column(to) - column(from);
-    return is_path_clear(from, steps, E);
+    return is_path_clear(from, to, E);
 }
 
 int is_cross_path_clear(int from, int to)
 {
-    if(from < to)
+    if(from > to)
     {
         swap(&from, &to);
     }
-    int steps = row(from) - row(to);
 
     if(column(from) < column(to))
     {
-        return is_path_clear(from, steps, NE);
+        return is_path_clear(from, to, SE);
     }
-    return is_path_clear(from, steps, NW);
+    return is_path_clear(from, to, SW);
 }
 
 int is_cross_move(int from, int to)
@@ -656,11 +670,6 @@ int is_cross_move(int from, int to)
 int can_move_cross(int coin)
 {
    return coin_type(coin) != KNIGHT && coin_type(coin) != ROOK;
-}
-
-int is_knight(int coin)
-{
-    return coin_type(coin) == KNIGHT;
 }
 
 int* generate_knight_moves(int pos)
@@ -702,53 +711,38 @@ int validate_move(int from, int to)
     {
         return 0;
     }
-    else if(color(Coin(from)) == color(Coin(to)))
+
+    int from_coin = Coin(from);
+    int from_coin_type = coin_type(from_coin);
+
+    if(from_coin == 0)
     {
         return 0;
     }
-    else if(is_knight(Coin(from)))
+    if(color(from_coin) == color(Coin(to)))
+    {
+        return 0;
+    }
+
+    if(from_coin_type == PAWN)
+    {
+        return validate_pawn_move(from, to);
+    }
+    else if(from_coin_type == KING)
+    {
+        return validate_king_move(from, to);
+    }
+    else if(from_coin_type == KNIGHT)
     {
         return is_knight_move(from, to) && !is_check_after_move(from, to, NORMAL);
     }
-    else if(can_move_news(Coin(from)) && is_news_move(from, to))
+    else if(can_move_news(from_coin) && is_news_move(from, to))
     {
-        if(coin_type(Coin(from)) == KING)
-        {
-            int move_type = steps_limit(from, to);
-            if(move_type > NORMAL)
-            {
-                return move_type;
-            }
-            return move_type && !is_check_after_move(from, to, NORMAL);
-        }
-        else if(coin_type(Coin(from)) == PAWN)
-        {
-            return pawn_move(from, to) && !is_check_after_move(from, to, NORMAL);
-        }
-        else
-        {
-            return is_news_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
-        }
+        return is_news_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
     }
-    else if(can_move_cross(Coin(from)) && is_cross_move(from, to))
+    else if(can_move_cross(from_coin) && is_cross_move(from, to))
     {
-        if(coin_type(Coin(from)) == KING)
-        {
-            return steps_limit(from, to) && !is_check_after_move(from, to, NORMAL);
-        }
-        else if(coin_type(Coin(from)) == PAWN)
-        {
-            int move_type = pawn_move(from, to);
-            if(move_type && !is_check_after_move(from, to, move_type))
-            {
-                return move_type;
-            }
-            return 0;
-        }
-        else
-        {
-            return is_cross_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
-        }
+        return is_cross_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
     }
     return 0;
 }
@@ -889,13 +883,13 @@ int is_check(int king_color, int king_position, int track_path)
 
 int is_check_after_move(int from, int to, int move_type)
 {
-    int start_coin = Coin(from), dest_coin = Coin(to), king_position;
+    int from_coin = Coin(from), to_coin = Coin(to), king_position;
 
-    if(coin_type(start_coin) == KING)
+    if(coin_type(from_coin) == KING)
     {
         king_position = to;
     }
-    else if(color(start_coin) == WHITE)
+    else if(color(from_coin) == WHITE)
     {
         king_position = white_king_pos;
     }
@@ -910,7 +904,7 @@ int is_check_after_move(int from, int to, int move_type)
 
     if(move_type == EN_PASSANT)
     {
-        if(color(start_coin) == BLACK)
+        if(color(from_coin) == BLACK)
         {
             en_pass_pos = to + N;
             en_coin = Coin(en_pass_pos);
@@ -924,10 +918,10 @@ int is_check_after_move(int from, int to, int move_type)
         }
     }
 
-    int check = is_check(color(start_coin), king_position, 0);
+    int check = is_check(color(from_coin), king_position, 0);
 
-    board[row(from)][column(from)] = start_coin;
-    board[row(to)][column(to)] = dest_coin;
+    board[row(from)][column(from)] = from_coin;
+    board[row(to)][column(to)] = to_coin;
 
     if(move_type == EN_PASSANT)
     {
@@ -1144,13 +1138,17 @@ int move(int from, int to)
         return 0;
     }
 
-    push_log(&move_log, create_log_node(from, Coin(from), to, Coin(to), move_type));
-    add_position(Coin(from), to, from);
+    int from_coin = Coin(from);
+    int to_coin = Coin(to);
+    int from_coin_type = coin_type(from_coin);
+
+    push_log(&move_log, create_log_node(from, from_coin, to, to_coin, move_type));
+    add_position(from_coin, to, from);
     
-    if(Coin(to) != 0)
+    if(to_coin != 0)
     {
         remove_piece(to);
-        push_captured(color(Coin(to)), Coin(to));
+        push_captured(color(to_coin), to_coin);
     }
     else if(move_type == EN_PASSANT)
     {
@@ -1158,10 +1156,10 @@ int move(int from, int to)
     }
     else if(move_type == SHORT_CASTLE || move_type == LONG_CASTLE)
     {
-        castle(color(Coin(from)), move_type);
+        castle(color(from_coin), move_type);
     }
 
-    if(Coin(to) != 0 || coin_type(Coin(from)) == PAWN)
+    if(to_coin != 0 || from_coin_type == PAWN)
     {
         reset_move_count();
     }
@@ -1170,21 +1168,21 @@ int move(int from, int to)
         increment_move_count();
     }
 
-    if(coin_type(Coin(to)) == ROOK)
+    if(coin_type(to_coin) == ROOK)
     {
         add_rook_info(to, to, 1, 0);
     }
 
-    board[row(to)][column(to)] = Coin(from);
+    board[row(to)][column(to)] = from_coin;
     board[row(from)][column(from)] = 0;
 
-    if(coin_type(Coin(to)) == PAWN && can_promote_pawn(to))
+    if(from_coin_type == PAWN && can_promote_pawn(to))
     {
         promote_pawn(to);
     }
-    else if(coin_type(Coin(to)) == KING)
+    else if(from_coin_type == KING)
     {
-        if(color(Coin(to)) == WHITE)
+        if(color(from_coin) == WHITE)
         {
             white_king_pos = to;
             white_king_moves++;
@@ -1195,7 +1193,7 @@ int move(int from, int to)
             black_king_moves++;
         }
     }
-    else if(coin_type(Coin(to)) == ROOK)
+    else if(from_coin_type == ROOK)
     {
         add_rook_info(to, from, 0, 0);
     }
@@ -1311,24 +1309,28 @@ int en_passant_cover(int position, int color)
 {
     if(color == BLACK && is_valid_pos(position + S) && !Coin(position + S))
     {
-        if(is_valid_pos(position + W) && Coin(position + W) == BLACK * 10 + PAWN)
+        if(is_valid_pos(position + W) && Coin(position + W) == BLACK * 10 + PAWN &&
+            validate_pawn_move(position + W, position + S) == EN_PASSANT)
         {
-            return pawn_move(position + W, position + S) == EN_PASSANT && !is_check_after_move(position + W, position + S, EN_PASSANT);
+            return 1;
         }
-        else if(is_valid_pos(position + E) && Coin(position + E) == BLACK * 10 + PAWN)
+        if(is_valid_pos(position + E) && Coin(position + E) == BLACK * 10 + PAWN && 
+            validate_pawn_move(position + E, position + S) == EN_PASSANT)
         {
-            return pawn_move(position + E, position + S) == EN_PASSANT && !is_check_after_move(position + E, position + S, EN_PASSANT);
+            return 1;
         }
     }
     else if(color == WHITE && is_valid_pos(position + N) && !Coin(position + N))
     {
-        if(is_valid_pos(position + W) && Coin(position + W) == WHITE * 10 + PAWN)
+        if(is_valid_pos(position + W) && Coin(position + W) == WHITE * 10 + PAWN &&
+            validate_pawn_move(position + W, position + N) == EN_PASSANT)
         {
-            return pawn_move(position + W, position + N) == EN_PASSANT && !is_check_after_move(position + W, position + N, EN_PASSANT);
+            return 1;
         }
-        else if(is_valid_pos(position + E) && Coin(position + E) == WHITE * 10 + PAWN)
+        if(is_valid_pos(position + E) && Coin(position + E) == WHITE * 10 + PAWN &&
+            validate_pawn_move(position + E, position + N) == EN_PASSANT)
         {
-            return pawn_move(position + E, position + N) == EN_PASSANT && !is_check_after_move(position + E, position + N, EN_PASSANT);
+            return 1;
         }
     }
     return 0;
