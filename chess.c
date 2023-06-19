@@ -30,6 +30,20 @@ struct move_count
     struct move_count *next;
 };
 
+struct move_node
+{
+    int from;
+    int to;
+    int move_type;
+    struct move_node *next;
+};
+
+struct queue
+{
+    struct move_node *front;
+    struct move_node *rear;   
+};
+
 struct log_node *move_log;
 struct pos_node *black_positions[6], *white_positions[6];
 struct rook_info rooks[4];
@@ -48,11 +62,12 @@ const int MAX_CAPTURED_INDEX = 15;
 int black_king_pos = 04, white_king_pos = 74, autosave = 0, file_id = 0, white_move = 1;
 char file_name[100];
 const int WHITE = 1, BLACK = 2, PAWN = 6, ROOK = 7, BISHOP = 8, KNIGHT = 5, KING = 3, QUEEN = 4;
-int knight_moves[8];
 int white_material = 144, black_material = 144, black_square_bishops = 2, white_square_bishops = 2, other_coins = 26;
 const int N = -10, S = 10, E = 1, W = -1, NW = -11, NE = -9, SW = 9, SE = 11;
 const int NORMAL = 1, SHORT_CASTLE = 2, LONG_CASTLE = 3, EN_PASSANT = 4;
 int black_king_moves = 0, white_king_moves = 0;
+int steps_to_edges[8][8][8];
+const int direction_off_set[] = {N, E, W, S, NE, NW, SE, SW};
 
 void rook();
 void queen();
@@ -83,6 +98,12 @@ void add_rook_info(int current_position, int previous_position, int captured, in
 void un_capture_rook();
 void add_piece(int coin, int position);
 void remove_piece(int to);
+int validate_move(int from, int to);
+int* generate_knight_moves(int pos);
+int is_valid_pos(int pos);
+int can_move_news(int coin);
+int move(struct move_node *validated_move);
+int undo();
 
 int row(int pos)
 {
@@ -447,6 +468,337 @@ void sub_material(int coin)
     }
 }
 
+struct move_node* create_move_node(int from, int to, int move_type)
+{
+    struct move_node *new_node = (struct move_node*)malloc(sizeof(struct move_node));
+    if(new_node == NULL)
+    {
+        printf("memory not allocated\n");
+        return NULL;
+    }
+
+    new_node->from = from;
+    new_node->to = to;
+    new_node->move_type = move_type;
+    new_node->next = NULL;
+    return new_node;
+}
+
+struct queue* init_queue()
+{
+    struct queue *q = (struct queue*)malloc(sizeof(struct queue));
+    if(q == NULL)
+    {
+        printf("memory not allocated\n");
+        return NULL;
+    }
+    q->front = q->rear = NULL;
+    return q;
+}
+
+void enqueue(struct queue *q, struct move_node *new_node)
+{
+    if(new_node == NULL)
+    {
+        return;
+    }
+
+    if(q->rear == NULL)
+    {
+        q->front = q->rear = new_node;
+    }
+    else
+    {
+        q->rear->next = new_node;
+        q->rear = q->rear->next;
+    }
+}
+
+struct move_node* dequeue(struct queue *q)
+{
+    if(q->front == NULL)
+    {
+        return NULL;
+    }
+
+    if(q->front->next == NULL)
+    {
+        struct move_node *temp = q->front;
+        q->front = q->rear = NULL;
+        return temp;
+    }
+
+    struct move_node *temp = q->front;
+    q->front = q->front->next;
+    temp->next = NULL;
+    return temp;
+}
+
+void free_queue(struct queue *q)
+{
+    struct move_node *current_node = q->front;
+    struct move_node *previous_node;
+    while(current_node != NULL)
+    {
+        previous_node = current_node;
+        current_node = current_node->next;
+        free(previous_node);
+    }
+    free(q);
+}
+
+int min(int x, int y)
+{
+    if(x > y)
+    {
+        return y;
+    }
+    return x;
+}
+
+void generate_steps_to_edges()
+{
+    int north, east, west, south, north_east, north_west, south_east, south_west;
+    for(int row = 0; row < 8; row++)
+    {
+        for(int col = 0; col < 8; col++)
+        {
+            north = row;
+            east = 7 - col;
+            west = col;
+            south = 7 - row;
+            north_east = min(north, east);
+            north_west = min(north, west);
+            south_east = min(south, east);
+            south_west = min(south, west);
+            
+            steps_to_edges[row][col][0] = north;
+            steps_to_edges[row][col][1] = east;
+            steps_to_edges[row][col][2] = west;
+            steps_to_edges[row][col][3] = south;
+            steps_to_edges[row][col][4] = north_east;
+            steps_to_edges[row][col][5] = north_west;
+            steps_to_edges[row][col][6] = south_east;
+            steps_to_edges[row][col][7] = south_west;
+        }
+    }
+}
+
+void generate_valid_pawn_moves(int color, int position, struct queue *q)
+{
+    int move_type;
+    if(color == WHITE)
+    {
+        if(move_type = validate_move(position, position + N))
+        {
+            enqueue(q, create_move_node(position, position + N, move_type));
+        }
+        if(move_type = validate_move(position, position + NE))
+        {
+            enqueue(q, create_move_node(position, position + NE, move_type));
+        }
+        if(move_type = validate_move(position, position + NW))
+        {
+            enqueue(q, create_move_node(position, position + NW, move_type));
+        }
+        if(row(position) == 6 && validate_move(position, position + N * 2))
+        {
+            enqueue(q, create_move_node(position, position + N * 2, NORMAL));
+        }
+    }
+    else
+    {
+        if(move_type = validate_move(position, position + S))
+        {
+            enqueue(q, create_move_node(position, position + S, move_type));
+        }
+        if(move_type = validate_move(position, position + SE))
+        {
+            enqueue(q, create_move_node(position, position + SE, move_type));
+        }
+        if(move_type = validate_move(position, position + SW))
+        {
+            enqueue(q, create_move_node(position, position + SW, move_type));
+        }
+        if(row(position) == 1 && validate_move(position, position + S * 2))
+        {
+            enqueue(q, create_move_node(position, position + S * 2, NORMAL));
+        }
+    }
+}
+
+void generate_valid_king_moves(int color, int position, struct queue *q)
+{
+    for(int i = 0; i < 8; i++)
+    {
+        if(validate_move(position, position + direction_off_set[i]))
+        {
+            enqueue(q, create_move_node(position, position + direction_off_set[i], NORMAL));
+        }
+    }
+    
+    int move_type;
+    if((color == WHITE && position == 74) || (color == BLACK && position == 4))
+    {
+        if(move_type = validate_move(position, position + 2 * E))
+        {
+            enqueue(q, create_move_node(position, position + 2 * E, move_type));
+        }
+        if(move_type = validate_move(position, position + 2 * W))
+        {
+            enqueue(q, create_move_node(position, position + 2 * W, move_type));
+        }
+    }
+}
+
+void generate_valid_knight_moves(int position, struct queue *q)
+{
+    int *knight_moves = generate_knight_moves(position);
+    if(knight_moves == NULL)
+    {
+        return;
+    }
+
+    for(int i = 0; i < 8; i++)
+    {
+        if(is_valid_pos(knight_moves[i]) && (color(Coin(position)) != color(Coin(knight_moves[i])))  &&
+         !is_check_after_move(position, knight_moves[i], NORMAL))
+        {
+            enqueue(q, create_move_node(position, knight_moves[i], NORMAL));
+        }
+    }
+    free(knight_moves);
+}
+
+void generate_valid_sliding_moves(int position, struct queue *q)
+{
+    int coin = Coin(position);
+    int type = coin_type(coin);
+    int start_direction, end_direction;
+    
+    if(type == BISHOP)
+    {
+        start_direction = 4;
+        end_direction = 7;
+    }
+    else if(type == ROOK)
+    {
+        start_direction = 0;
+        end_direction = 3;
+    }
+    else if(type == QUEEN)
+    {
+        start_direction = 0;
+        end_direction = 7;
+    }
+
+    int max_steps, current_position;
+    for(int i = start_direction; i <= end_direction; i++)
+    {   
+        current_position = position;
+        max_steps = steps_to_edges[row(position)][column(position)][i];
+
+        for(int steps = 1; steps <= max_steps; steps++)
+        {
+            current_position += direction_off_set[i];
+            if(validate_move(position, current_position))
+            {
+                enqueue(q, create_move_node(position, current_position, NORMAL));
+            }
+
+            if(Coin(current_position))
+            {
+                break;
+            }
+        }
+    }
+}
+
+struct queue* generate_valid_moves(int color)
+{
+    struct pos_node **positions = get_positions(color);
+    struct pos_node *current_position;
+    struct queue *list = init_queue();
+    if(list == NULL)
+    {
+        return NULL;
+    }
+
+    int type;
+    for(int i = 0; i < 6; i++)
+    {
+        current_position = positions[i];
+        while(current_position != NULL)
+        {
+            type = coin_type(Coin(current_position->pos));
+            if(type == PAWN)
+            {
+                generate_valid_pawn_moves(color, current_position->pos, list);
+            }
+            else if(type == KING)
+            {
+                generate_valid_king_moves(color, current_position->pos, list);
+            }
+            else if(type == KNIGHT)
+            {
+                generate_valid_knight_moves(current_position->pos, list);
+            }
+            else
+            {
+                generate_valid_sliding_moves(current_position->pos, list);
+            }
+            current_position = current_position->next;
+        }
+    }
+    return list;
+}
+
+int op_color(int color)
+{
+    if(color == WHITE)
+    {
+        return BLACK;
+    }
+    return WHITE;
+}
+
+int moves_in_depth(int color, int depth)
+{
+    if(depth == 0)
+    {
+        return 1;
+    }
+    long int count = 0;
+    struct queue *q;
+    q = generate_valid_moves(color);
+    if(q == NULL)
+    {
+        return 0;
+    }
+    struct move_node *mv = q->front;
+    while(mv != NULL)
+    {
+        move(mv);
+        mv = mv->next;
+        count += moves_in_depth(op_color(color), depth - 1);
+        undo();
+    }
+    free_queue(q);
+    return count;
+}
+
+int queue_length(struct queue *q)
+{
+    struct move_node *temp = q->front;
+    int count = 0;
+    while(temp != NULL)
+    {
+        temp = temp->next;
+        count++;
+    }
+    return count;
+}
+
 void push_check_path(int pos)
 {
     check_path[++cpt] = pos;
@@ -657,6 +1009,12 @@ int can_move_cross(int coin)
 
 int* generate_knight_moves(int pos)
 {
+    int *knight_moves = (int*)malloc(sizeof(int) * 8);
+    if(knight_moves == NULL)
+    {
+        return NULL;
+    }
+
     knight_moves[0] = pos + S + S + E;
     knight_moves[1] = pos + N + N + E;
     knight_moves[2] = pos + N + N + W;
@@ -665,21 +1023,26 @@ int* generate_knight_moves(int pos)
     knight_moves[5] = pos + N + E + E;
     knight_moves[6] = pos + N + W + W;
     knight_moves[7] = pos + S + W + W;
-
     return knight_moves;
 }
 
 int is_knight_move(int from, int to)
 {
     int *moves = generate_knight_moves(from);
+    if(moves == NULL)
+    {
+        printf("memory not allocated\n");
+        return 0;
+    }
     for(int i = 0; i < 8; i++)
     {
         if(moves[i] == to)
         {
+            free(moves);
             return 1;
         }
     }
-    
+    free(moves);
     return 0;
 }
 
@@ -715,19 +1078,22 @@ int validate_move(int from, int to)
     {
         return validate_king_move(from, to);
     }
-    else if(from_coin_type == KNIGHT)
+    // else if(from_coin_type == KNIGHT)
+    // {
+    //     return is_knight_move(from, to) && !is_check_after_move(from, to, NORMAL);
+    // }
+    // else if(can_move_news(from_coin) && is_news_move(from, to))
+    else
     {
-        return is_knight_move(from, to) && !is_check_after_move(from, to, NORMAL);
+        // return is_news_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
+        return !is_check_after_move(from, to, NORMAL);
+
     }
-    else if(can_move_news(from_coin) && is_news_move(from, to))
-    {
-        return is_news_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
-    }
-    else if(can_move_cross(from_coin) && is_cross_move(from, to))
-    {
-        return is_cross_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
-    }
-    return 0;
+    // else if(can_move_cross(from_coin) && is_cross_move(from, to))
+    // {
+    //     return is_cross_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
+    // }
+    // return 0;
 }
 
 int can_move(int direction, int coin)
@@ -852,15 +1218,21 @@ int is_check(int king_color, int king_position, int track_path)
         op_color = WHITE;
     }
     int *moves = generate_knight_moves(king_position);
+    if(moves == NULL)
+    {
+        printf("memory not allocated\n");
+        return 0;
+    }
     for(int i = 0; i < 8; i++)
     {
         if(is_valid_pos(moves[i]) && Coin(moves[i]) == op_color * 10 + KNIGHT)
         {
             push_check_path(moves[i]);
+            free(moves);
             return check_path[cpt];
         }
     }
-
+    free(moves);
     return -1;
 }
 
@@ -1113,9 +1485,11 @@ void un_castle(struct log_node *temp)
     }
 }
 
-int move(int from, int to)
+int move(struct move_node *validated_move)
 {
-    int move_type = validate_move(from, to);
+    int from = validated_move->from, to = validated_move->to;
+    int move_type = validated_move->move_type;
+    //int move_type = validate_move(from, to);
     if(!move_type)
     {
         return 0;
@@ -1361,13 +1735,20 @@ int one_pawn_move(int pos)
 int one_knight_move(int clr, int pos)
 {
     int *moves = generate_knight_moves(pos);
+    if(moves == NULL)
+    {
+        printf("memory not allocated\n");
+        return 0;
+    }
     for(int i = 0; i < 8; i++)
     {
         if(is_valid_pos(moves[i]) && color(Coin(moves[i])) != clr && !is_check_after_move(pos, moves[i], NORMAL))
         {
+            free(moves);
             return 1;
         }
     }
+    free(moves);
     return 0;
 }
 
@@ -1728,16 +2109,18 @@ void start_game()
     int choice;
     while(1)
     {
-        printf("\n1.New game 2.continue 3.settings ");
-        scanf("%d", &choice);
+        // printf("\n1.New game 2.continue 3.settings ");
+        // scanf("%d", &choice);
+        choice = 1;
         if(choice == 1)
         {
-            printf("enter any id(number) for this game ");
-            scanf("%d", &file_id);
-            sprintf(file_name, "%d.txt", file_id);
+            // printf("enter any id(number) for this game ");
+            // scanf("%d", &file_id);
+            // sprintf(file_name, "%d.txt", file_id);
             chess_board();
             init_rook_info();
             init_hash_table();
+            generate_steps_to_edges();
             break;
         }
         else if(choice == 2)
@@ -1851,6 +2234,20 @@ void construct()
 int main()
 {
     start_game();
+    // struct queue *q = generate_valid_moves(BLACK);
+    // printf("moves generated %d\n", queue_length(q));
+    // free_queue(q);
+    // printf("depth %d, moves generated %d\n", 1, moves_in_depth(WHITE, 1));
+    // printf("depth %d, moves generated %d\n", 2, moves_in_depth(WHITE, 2));
+    // printf("depth %d, moves generated %d\n", 3, moves_in_depth(WHITE, 3));
+    // printf("depth %d, moves generated %d\n", 4, moves_in_depth(WHITE, 4));
+    // printf("depth %d, moves generated %d\n", 5, moves_in_depth(WHITE, 5));
+    int depth = 5;
+    printf("depth %d, moves generated %d\n", depth, moves_in_depth(WHITE, depth));
+    // printf("depth %d, moves generated %d\n", 7, moves_in_depth(WHITE, 7));
+
+    destruct();
+    return 0;
     display_name_board();
     //construct();
     //display_board();
@@ -1885,11 +2282,11 @@ int main()
             {
                 continue;
             }
-            else if(!move(from, to))
-            {
-                printf("wrong move\n");
-                continue;
-            }
+            // else if(!move(from, to))
+            // {
+            //     printf("wrong move\n");
+            //     continue;
+            // }
             else
             {
                 if(is_game_over(BLACK, black_king_pos))
@@ -1927,11 +2324,11 @@ int main()
             {
                 continue;
             }
-            else if(!move(from, to))
-            {
-                printf("wrong move\n");
-                continue;
-            }
+            // else if(!move(from, to))
+            // {
+            //     printf("wrong move\n");
+            //     continue;
+            // }
             else
             {
                 if(is_game_over(WHITE, white_king_pos))
