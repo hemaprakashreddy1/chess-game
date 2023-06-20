@@ -589,15 +589,15 @@ void generate_valid_pawn_moves(int color, int position, struct queue *q)
     int move_type;
     if(color == WHITE)
     {
-        if(move_type = validate_move(position, position + N))
+        if((move_type = validate_move(position, position + N)))
         {
             enqueue(q, create_move_node(position, position + N, move_type));
         }
-        if(move_type = validate_move(position, position + NE))
+        if((move_type = validate_move(position, position + NE)))
         {
             enqueue(q, create_move_node(position, position + NE, move_type));
         }
-        if(move_type = validate_move(position, position + NW))
+        if((move_type = validate_move(position, position + NW)))
         {
             enqueue(q, create_move_node(position, position + NW, move_type));
         }
@@ -608,15 +608,15 @@ void generate_valid_pawn_moves(int color, int position, struct queue *q)
     }
     else
     {
-        if(move_type = validate_move(position, position + S))
+        if((move_type = validate_move(position, position + S)))
         {
             enqueue(q, create_move_node(position, position + S, move_type));
         }
-        if(move_type = validate_move(position, position + SE))
+        if((move_type = validate_move(position, position + SE)))
         {
             enqueue(q, create_move_node(position, position + SE, move_type));
         }
-        if(move_type = validate_move(position, position + SW))
+        if((move_type = validate_move(position, position + SW)))
         {
             enqueue(q, create_move_node(position, position + SW, move_type));
         }
@@ -640,11 +640,11 @@ void generate_valid_king_moves(int color, int position, struct queue *q)
     int move_type;
     if((color == WHITE && position == 74) || (color == BLACK && position == 4))
     {
-        if(move_type = validate_move(position, position + 2 * E))
+        if((move_type = validate_move(position, position + 2 * E)))
         {
             enqueue(q, create_move_node(position, position + 2 * E, move_type));
         }
-        if(move_type = validate_move(position, position + 2 * W))
+        if((move_type = validate_move(position, position + 2 * W)))
         {
             enqueue(q, create_move_node(position, position + 2 * W, move_type));
         }
@@ -1078,22 +1078,11 @@ int validate_move(int from, int to)
     {
         return validate_king_move(from, to);
     }
-    // else if(from_coin_type == KNIGHT)
-    // {
-    //     return is_knight_move(from, to) && !is_check_after_move(from, to, NORMAL);
-    // }
-    // else if(can_move_news(from_coin) && is_news_move(from, to))
     else
     {
-        // return is_news_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
         return !is_check_after_move(from, to, NORMAL);
 
     }
-    // else if(can_move_cross(from_coin) && is_cross_move(from, to))
-    // {
-    //     return is_cross_path_clear(from, to) && !is_check_after_move(from, to, NORMAL);
-    // }
-    // return 0;
 }
 
 int can_move(int direction, int coin)
@@ -2141,7 +2130,7 @@ void start_game()
             }
             else
             {
-                white_move == 1;
+                white_move = 1;
                 if(is_game_over(WHITE, white_king_pos))
                 {
                     destruct();
@@ -2234,17 +2223,8 @@ void construct()
 int main()
 {
     start_game();
-    // struct queue *q = generate_valid_moves(BLACK);
-    // printf("moves generated %d\n", queue_length(q));
-    // free_queue(q);
-    // printf("depth %d, moves generated %d\n", 1, moves_in_depth(WHITE, 1));
-    // printf("depth %d, moves generated %d\n", 2, moves_in_depth(WHITE, 2));
-    // printf("depth %d, moves generated %d\n", 3, moves_in_depth(WHITE, 3));
-    // printf("depth %d, moves generated %d\n", 4, moves_in_depth(WHITE, 4));
-    // printf("depth %d, moves generated %d\n", 5, moves_in_depth(WHITE, 5));
-    int depth = 5;
+    int depth = 6;
     printf("depth %d, moves generated %d\n", depth, moves_in_depth(WHITE, depth));
-    // printf("depth %d, moves generated %d\n", 7, moves_in_depth(WHITE, 7));
 
     destruct();
     return 0;
